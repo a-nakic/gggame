@@ -539,6 +539,12 @@ bool markProximityNodes (Node* node, int maxDeg)
 }
 
 
+void distributeChildNodes (Node* node, int maxDeg)
+{
+    
+}
+
+
 void genTestNodes ()
 {
     vector <Node*> activeNodes;
@@ -579,6 +585,20 @@ void genTestNodes ()
                 }
             }
             activeNodes = temp;
+        }
+
+        for (vector <Node*>::iterator i = chosenNodes.begin ();
+            i != chosenNodes.end (); ++i) {
+
+            (*i)->deg = rand () % min ((int) (*i)->childNeighbors.size (), maxDeg);
+
+            distributeChildNodes (*i, maxDeg);
+
+            for (vector <Node*>::iterator j = (*i)->childNodes.begin ();
+                j != (*i)->childNodes.end (); ++j) {
+
+                activeNodes.push_back (*j);
+            }
         }
 
         printf ("%d\n", (int) chosenNodes.size ());
