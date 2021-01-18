@@ -492,10 +492,11 @@ void restoreBioDFS (Node* node)
 }
 
 
-void markProximityNodes (Node* node, int maxDeg)
+bool markProximityNodes (Node* node, int maxDeg)
 {
     set <double> distances;
     double maxDist;
+    vector <Node*> toBeMarked;
 
     for (vector <Node*>::iterator i = node->childNeighbors.begin ();
         i != node->childNeighbors.end (); ++i) {
@@ -507,6 +508,8 @@ void markProximityNodes (Node* node, int maxDeg)
     for (int i = 0; it != distances.end () && i < maxDeg - 1; ++it, ++i);
     maxDist = *it;
 
+    toBeMarked.clear ();
+
     for (vector <Node*>::iterator i = node->childNeighbors.begin ();
         i != node->childNeighbors.end (); ++i) {
     
@@ -517,16 +520,28 @@ void markProximityNodes (Node* node, int maxDeg)
         for (vector <Node*>::iterator j = (*i)->parentNeighbors.begin ();
             j != (*i)->parentNeighbors.end (); ++j) {
 
-            (*j)->status |= MARKED;
+            if ((*j)->status & MARKED) {
+                return false;
+            }
+
+            toBeMarked.push_back (*j);
         }
     }
+
+    for (vector <Node*>::iterator it = toBeMarked.begin ();
+        it != toBeMarked.end (); ++it) {
+
+        (*it)->status |= MARKED;
+    }
+
+    return true;
 }
 
 
 void genTestNodes ()
 {
     vector <Node*> activeNodes;
-    vector <Node*> chosenNodes;
+    vector <Node*> temp;
 
     preCompGraph ();
 
@@ -536,7 +551,6 @@ void genTestNodes ()
         set <Node*> nodeSet;
         int maxDeg = 0;
         nodeSet.clear ();
-        chosenNodes.clear ();
 
         for (vector <Node*>::iterator i = activeNodes.begin ();
             i != activeNodes.end (); ++i) {
@@ -550,12 +564,28 @@ void genTestNodes ()
             }
         }
 
-        maxDeg = rand () % (maxDeg - 1) + 1;
+        maxDeg = rand () % maxDeg + 1;
+        
 
-        //while () {
-            int it = rand () % (activeNodes.size ());
+        while (!activeNodes.empty ()) {
+            int it = rand () % activeNodes.size ();
 
-        //}
+            if (markProximityNodes (activeNodes[it], maxDeg)) {
+
+            }
+
+            temp.clear ();
+            for (vector <Node*>::iterator i = activeNodes.begin ();
+                i != activeNodes.end (); ++i) {
+
+                if (!((*i)->status & MARKED)) {
+                    temp.push_back (*i);
+                }
+            }
+            activeNodes = temp;
+
+
+        }
 
         activeNodes.clear ();
     }
