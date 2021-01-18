@@ -550,20 +550,12 @@ void genTestNodes ()
     activeNodes.push_back (root);
 
     while (!activeNodes.empty ()) {
-        set <Node*> nodeSet;
         int maxDeg = 0;
-        nodeSet.clear ();
 
         for (vector <Node*>::iterator i = activeNodes.begin ();
             i != activeNodes.end (); ++i) {
 
             maxDeg = max (maxDeg, (int) (*i)->childNeighbors.size ());
-
-            for (vector <Node*>::iterator it = (*i)->childNeighbors.begin ();
-                it != (*i)->childNeighbors.end (); ++it) {
-
-                nodeSet.insert (*it);
-            }
         }
 
         maxDeg = rand () % maxDeg + 1;
