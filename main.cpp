@@ -17,7 +17,8 @@
 #define INACTIVE    0x02
 #define UNUSED      0x04
 #define MARKED      0x08
-#define BIO         0x10
+#define MARKED_SKIP 0x10
+#define BIO         0x20
 
 using namespace std;
 
@@ -541,6 +542,7 @@ bool markProximityNodes (Node* node, int maxDeg)
 void genTestNodes ()
 {
     vector <Node*> activeNodes;
+    vector <Node*> chosenNodes;
     vector <Node*> temp;
 
     preCompGraph ();
@@ -565,29 +567,29 @@ void genTestNodes ()
         }
 
         maxDeg = rand () % maxDeg + 1;
-        
+        chosenNodes.clear ();
 
         while (!activeNodes.empty ()) {
             int it = rand () % activeNodes.size ();
 
-            if (markProximityNodes (activeNodes[it], maxDeg)) {
+            activeNodes[it]->status |= MARKED_SKIP;
 
+            if (markProximityNodes (activeNodes[it], maxDeg)) {
+                chosenNodes.push_back (activeNodes[it]);
             }
 
             temp.clear ();
             for (vector <Node*>::iterator i = activeNodes.begin ();
                 i != activeNodes.end (); ++i) {
 
-                if (!((*i)->status & MARKED)) {
+                if (!((*i)->status & (MARKED | MARKED_SKIP))) {
                     temp.push_back (*i);
                 }
             }
             activeNodes = temp;
-
-
         }
 
-        activeNodes.clear ();
+        printf ("%d\n", (int) chosenNodes.size ());
     }
 
     nodeDFS (root);
