@@ -13,26 +13,28 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "Dependencies/std_image.h"
 
+#define ACTIVE      0x01
+#define INACTIVE    0x02
+#define UNUSED      0x04
+#define MARKED      0x08
+#define BIO         0x10
+
 using namespace std;
 
-struct CoordNode {
-    double x, y;
-    bool status;
-    vector <CoordNode*> neighbors;
-};
 
 struct Node {
     GLuint vao;
     
-    int status;
+    uint8_t status;
     int deg;
-    bool bio;
     double x, y;
-    
-    vector <Node*> neighbors;
-    vector <Node*> similarNodes;
+
+    vector <Node*> parentNeighbors;
+    vector <Node*> childNeighbors;
     Node* parentNode;
     vector <Node*> childNodes;
+
+    vector <Node*> similarNodes;
 };
 
 struct Quad {
@@ -50,22 +52,17 @@ int width;
 int height;
 
 Node* root;
-CoordNode* coordRoot;
 vector <GLuint>* node_vaos;
 vector <GLuint>* nodeCenter_vaos;
 vector <GLuint>* edge_vaos;
 
 
-bool close (Node* node_1, Node* node_2)
+double dist (Node* node_1, Node* node_2)
 {
     double x = node_1->x - node_2->x;
     double y = node_1->y - node_2->y;
 
-    if (sqrt (x * x + y * y) <= 0.23) {
-        return true;
-    } else {
-        return false;
-    }
+    return sqrt (x * x + y * y); 
 }
 
 
@@ -391,14 +388,15 @@ void fillEdgeBuffers (GLuint* vao, Node* node_1, Node* node_2)
 }
 
 
-void preCompCordGraph ()
+void preCompGraph ()
 {
     root->x = 0.0;
     root->y = 0.0;
-    root->bio = false;
+    root->status = 0x00;
 
     vector <Node*> nodes;
     vector <Node*> temp;
+    vector <vector <Node*>> perLevelNodes;
 
     nodes.push_back (root);
 
@@ -425,28 +423,33 @@ void preCompCordGraph ()
 
             newNode->x = x;
             newNode->y = y;
-            newNode->bio = false;
+            newNode->status = 0x00;
 
             temp.push_back (newNode);
 
             for (vector <Node*>::iterator it = nodes.begin ();
                 it != nodes.end (); ++it) {
                 
-                if (close (*it, newNode)) {
-                    (*it)->neighbors.push_back (newNode);
+                if (dist (*it, newNode) < 0.23) {
+                    (*it)->childNeighbors.push_back (newNode);
+                    newNode->parentNeighbors.push_back (*it);
                 }
             }            
         }
 
+        perLevelNodes.push_back (nodes);
+
         nodes.clear ();
         nodes = temp;        
     }
+
+    perLevelNodes.push_back (nodes);
 }
 
 
 void nodeDFS (Node* node)
 {
-    if (node->bio) {
+    if (node->status & BIO) {
         return;
     }
 
@@ -458,10 +461,10 @@ void nodeDFS (Node* node)
     node_vaos->push_back (node->vao);
     nodeCenter_vaos->push_back (*nodeCenter_vao);
 
-    node->bio = true;
+    node->status |= BIO;
 
-    for (vector <Node*>::iterator it = node->neighbors.begin ();
-        it != node->neighbors.end (); ++it) {
+    for (vector <Node*>::iterator it = node->childNeighbors.begin ();
+        it != node->childNeighbors.end (); ++it) {
 
         GLuint* edge_vao = new GLuint;
         fillEdgeBuffers (edge_vao, node, *it);
@@ -469,11 +472,55 @@ void nodeDFS (Node* node)
         edge_vaos->push_back (*edge_vao);
 
         nodeDFS (*it);
-    }    
+    }
 }
 
 
+void restoreBioDFS (Node* node)
+{
+    if (!(node->status & BIO)) {
+        return;
+    }
 
+    node->status &= ~BIO;
+
+    for (vector <Node*>::iterator it = node->childNeighbors.begin ();
+        it != node->childNeighbors.end (); ++it) {
+
+        nodeDFS (*it);
+    }
+}
+
+
+void markProximityNodes (Node* node, int maxDeg)
+{
+    set <double> distances;
+    double maxDist;
+
+    for (vector <Node*>::iterator i = node->childNeighbors.begin ();
+        i != node->childNeighbors.end (); ++i) {
+
+        distances.insert (dist (node, *i));
+    }
+
+    set <double>::iterator it = distances.begin ();
+    for (int i = 0; it != distances.end () && i < maxDeg - 1; ++it, ++i);
+    maxDist = *it;
+
+    for (vector <Node*>::iterator i = node->childNeighbors.begin ();
+        i != node->childNeighbors.end (); ++i) {
+    
+        if (dist (node, *i) > maxDist) {
+            continue;
+        }
+
+        for (vector <Node*>::iterator j = (*i)->parentNeighbors.begin ();
+            j != (*i)->parentNeighbors.end (); ++j) {
+
+            (*j)->status |= MARKED;
+        }
+    }
+}
 
 
 void genTestNodes ()
@@ -481,7 +528,7 @@ void genTestNodes ()
     vector <Node*> activeNodes;
     vector <Node*> chosenNodes;
 
-    preCompCordGraph ();
+    preCompGraph ();
 
     activeNodes.push_back (root);
 
@@ -494,36 +541,33 @@ void genTestNodes ()
         for (vector <Node*>::iterator i = activeNodes.begin ();
             i != activeNodes.end (); ++i) {
 
-            maxDeg = max (maxDeg, (int) (*i)->neighbors.size ());
+            maxDeg = max (maxDeg, (int) (*i)->childNeighbors.size ());
 
-            for (vector <Node*>::iterator it = (*i)->neighbors.begin ();
-                it != (*i)->neighbors.end (); ++it) {
+            for (vector <Node*>::iterator it = (*i)->childNeighbors.begin ();
+                it != (*i)->childNeighbors.end (); ++it) {
 
                 nodeSet.insert (*it);
             }
         }
 
-        int availableNodeNum = nodeSet.size () / maxDeg;
-        
-        if (availableNodeNum > activeNodes.size ()) {
-            availableNodeNum = activeNodes.size ();
-        }
+        maxDeg = rand () % (maxDeg - 1) + 1;
 
-        
+        //while () {
+            int it = rand () % (activeNodes.size ());
 
-        printf ("%d\n", availableNodeNum);
+        //}
 
         activeNodes.clear ();
     }
 
     nodeDFS (root);
+
 }
 
 
 int main ()
 {
     root = new Node;
-    coordRoot = new CoordNode;
     node_vaos = new vector <GLuint>;
     nodeCenter_vaos = new vector <GLuint>;
     edge_vaos = new vector <GLuint>;
