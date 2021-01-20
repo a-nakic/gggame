@@ -5,10 +5,12 @@
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <stdio.h>
+#include <stdlib.h>
 #include <iostream>
 #include <vector>
 #include <set>
 #include <math.h>
+#include <time.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "Dependencies/std_image.h"
@@ -454,36 +456,39 @@ void nodeDFS (Node* node)
         return;
     }
 
-    fillTestNodeBuffers (&(node->vao), node->x, node->y);
+    if (node->status & ACTIVE) {
+        fillTestNodeBuffers (&(node->vao), node->x, node->y);
+        node_vaos->push_back (node->vao);
+    }
 
     GLuint* nodeCenter_vao = new GLuint; 
     fillNodeCenterBuffers (nodeCenter_vao, node->x, node->y);
-
-    node_vaos->push_back (node->vao);
     nodeCenter_vaos->push_back (*nodeCenter_vao);
 
     node->status |= BIO;
 
-    for (vector <Node*>::iterator it = node->childNeighbors.begin ();
-        it != node->childNeighbors.end (); ++it) {
+    for (vector <Node*>::iterator it = node->childNodes.begin ();
+        it != node->childNodes.end (); ++it) {
 
-        GLuint* edge_vao = new GLuint;
-        fillEdgeBuffers (edge_vao, node, *it);
+        if ((*it)->status & ACTIVE && node->status & ACTIVE) {
+            GLuint* edge_vao = new GLuint;
+            fillEdgeBuffers (edge_vao, node, *it);
 
-        edge_vaos->push_back (*edge_vao);
+            edge_vaos->push_back (*edge_vao);
+        }
 
         nodeDFS (*it);
     }
 }
 
 
-void restoreBioDFS (Node* node)
+void restoreStatusDFS (Node* node)
 {
     if (!(node->status & BIO)) {
         return;
     }
 
-    node->status &= ~BIO;
+    node->status = 0x00;
 
     for (vector <Node*>::iterator it = node->childNeighbors.begin ();
         it != node->childNeighbors.end (); ++it) {
@@ -493,11 +498,10 @@ void restoreBioDFS (Node* node)
 }
 
 
-bool markProximityNodes (Node* node, int maxDeg)
+double getMaxDist (Node* node, int maxDeg)
 {
     set <double> distances;
-    double maxDist;
-    vector <Node*> toBeMarked;
+    double maxDist = 0;
 
     for (vector <Node*>::iterator i = node->childNeighbors.begin ();
         i != node->childNeighbors.end (); ++i) {
@@ -506,30 +510,41 @@ bool markProximityNodes (Node* node, int maxDeg)
     }
 
     set <double>::iterator it = distances.begin ();
-    for (int i = 0; it != distances.end () && i < maxDeg - 1; ++it, ++i);
-    maxDist = *it;
+    
+    for (; it != distances.end (); ++it) {
+        maxDeg--;
+        maxDist = *it;
 
-    toBeMarked.clear ();
+        if (maxDeg <= 0) {
+            break;
+        }
+    }
+
+    return maxDist;
+}
+
+
+bool markProximityNodes (Node* node, int maxDeg)
+{
+    set <Node*> toBeMarked;
+
+    double maxDist = getMaxDist (node, maxDeg);
 
     for (vector <Node*>::iterator i = node->childNeighbors.begin ();
         i != node->childNeighbors.end (); ++i) {
     
+        if ((*i)->status & MARKED) {
+            return false;
+        }
+
         if (dist (node, *i) > maxDist) {
             continue;
         }
 
-        for (vector <Node*>::iterator j = (*i)->parentNeighbors.begin ();
-            j != (*i)->parentNeighbors.end (); ++j) {
-
-            if ((*j)->status & MARKED) {
-                return false;
-            }
-
-            toBeMarked.push_back (*j);
-        }
+        toBeMarked.insert (*i);
     }
 
-    for (vector <Node*>::iterator it = toBeMarked.begin ();
+    for (set <Node*>::iterator it = toBeMarked.begin ();
         it != toBeMarked.end (); ++it) {
 
         (*it)->status |= MARKED;
@@ -539,9 +554,38 @@ bool markProximityNodes (Node* node, int maxDeg)
 }
 
 
+//TODO geometrically correct distrubution
 void distributeChildNodes (Node* node, int maxDeg)
 {
-    
+    double maxDist = getMaxDist (node, maxDeg);
+
+    vector <Node*> tempChildNodes;
+
+    for (vector <Node*>::iterator it = node->childNeighbors.begin ();
+        it != node->childNeighbors.end (); ++it) {
+
+        if (tempChildNodes.size () >= maxDeg) {
+            break;
+        }
+
+        if (dist (node, *it) <= maxDist + 1e-10) {
+            tempChildNodes.push_back (*it);
+        }
+    }
+
+    while (!tempChildNodes.empty ()) {
+        if (node->childNodes.size () >= node->deg
+            || node->childNodes.size () >= node->childNeighbors.size ()) {
+            break;
+        }
+
+        int randIt = rand () % (int) tempChildNodes.size ();
+
+        node->childNodes.push_back (tempChildNodes[randIt]);
+        tempChildNodes[randIt]->parentNode = node;
+
+        tempChildNodes.erase (tempChildNodes.begin () + randIt);
+    }
 }
 
 
@@ -555,6 +599,8 @@ void genTestNodes ()
 
     activeNodes.push_back (root);
 
+    srand (time (NULL));
+
     while (!activeNodes.empty ()) {
         int maxDeg = 0;
 
@@ -562,9 +608,14 @@ void genTestNodes ()
             i != activeNodes.end (); ++i) {
 
             maxDeg = max (maxDeg, (int) (*i)->childNeighbors.size ());
+
+            (*i)->status |= UNUSED;
         }
 
-        maxDeg = rand () % maxDeg + 1;
+        if (maxDeg > 0) {
+            maxDeg = rand () % maxDeg + 1;
+        }
+            
         chosenNodes.clear ();
 
         while (!activeNodes.empty ()) {
@@ -580,7 +631,7 @@ void genTestNodes ()
             for (vector <Node*>::iterator i = activeNodes.begin ();
                 i != activeNodes.end (); ++i) {
 
-                if (!((*i)->status & (MARKED | MARKED_SKIP))) {
+                if (!((*i)->status & (MARKED_SKIP))) {
                     temp.push_back (*i);
                 }
             }
@@ -590,7 +641,13 @@ void genTestNodes ()
         for (vector <Node*>::iterator i = chosenNodes.begin ();
             i != chosenNodes.end (); ++i) {
 
-            (*i)->deg = rand () % min ((int) (*i)->childNeighbors.size (), maxDeg);
+            int tempMod = min ((int) (*i)->childNeighbors.size (), maxDeg);
+            
+            if (tempMod > 0) {
+                (*i)->deg = rand () % tempMod + 1;
+            } else {
+                (*i)->deg = 0;
+            }
 
             distributeChildNodes (*i, maxDeg);
 
@@ -600,8 +657,6 @@ void genTestNodes ()
                 activeNodes.push_back (*j);
             }
         }
-
-        printf ("%d\n", (int) chosenNodes.size ());
     }
 
     nodeDFS (root);
