@@ -53,12 +53,16 @@ float asp = 1080.0f / 1920.0f;
 float inv_asp = 1920.0f / 1080.0f;
 int width;
 int height;
+double mouse_xpos, mouse_ypos;
+
+Quad* menuQuad;
 
 Node* root;
 vector <GLuint>* activeNode_vaos;
 vector <GLuint>* inactiveNode_vaos;
 vector <GLuint>* nodeCenter_vaos;
 vector <GLuint>* edge_vaos;
+vector <GLuint>* nodeGlare_vaos;
 
 
 double dist (Node* node_1, Node* node_2)
@@ -70,10 +74,134 @@ double dist (Node* node_1, Node* node_2)
 }
 
 
+bool nodeDetect (Node* node)
+{
+    return sqrt ((node->x - mouse_xpos) * (node->x - mouse_xpos)
+    + (node->y - mouse_ypos) * (node->y - mouse_ypos)) < 0.05f;
+}
+
+
+void restoreBioDFS (Node* node)
+{
+    if (!(node->status & BIO)) {
+        return;
+    }
+
+    node->status &= ~BIO;
+
+    for (vector <Node*>::iterator it = node->childNeighbors.begin ();
+        it != node->childNeighbors.end (); ++it) {
+
+        restoreBioDFS (*it);
+    }
+}
+
+
+void setNodeStatus (Node* node)
+{
+    int usedNeighborsNum = 0;
+/*
+    if (nodeDetect (node) && node->status & ACTIVE) {
+        node->status |= UNUSED;
+    }
+*/
+    for (vector <Node*>::iterator it = node->childNodes.begin (); 
+        it != node->childNodes.end (); ++it) {
+
+        if (nodeDetect (*it) && (*it)->status & ACTIVE) {
+            (*it)->status &= ~(ACTIVE | INACTIVE);
+            (*it)->status |= UNUSED;
+        }
+
+        if ((*it)->status & (ACTIVE | INACTIVE)) {
+            usedNeighborsNum++;
+        }
+    }
+/*
+    if (node->parentNode != NULL) {
+        if (nodeDetect (node->parentNode) && node->parentNode->status & ACTIVE) {
+            node->parentNode->status &= ~(ACTIVE | INACTIVE);
+            node->parentNode->status |= UNUSED;
+        }
+
+        if (node->parentNode->status & (ACTIVE | INACTIVE)) {
+            usedNeighborsNum++;
+        }
+    }
+
+    if (node->status & UNUSED) {
+        node->status &= ~(ACTIVE | INACTIVE);
+    }
+*/
+    if (usedNeighborsNum == 1 && node->parentNode == NULL) {
+        usedNeighborsNum = 0;
+    }
+
+    if (usedNeighborsNum > 0) {
+        node->status &= ~ACTIVE;
+        node->status |= INACTIVE;
+    } else {
+        node->status &= ~INACTIVE;
+        node->status |= ACTIVE;
+    }
+}
+
+
+void loadTreeVaosDFS (Node* node)
+{
+    if (node->status & BIO) {
+        return;
+    }
+
+    setNodeStatus (node);
+
+    if (node->status & ACTIVE) {
+        activeNode_vaos->push_back (node->vao);
+    } else if (node->status & INACTIVE) {
+        inactiveNode_vaos->push_back (node->vao);
+    }
+
+    node->status |= BIO;
+
+    for (vector <Node*>::iterator it = node->childNeighbors.begin ();
+        it != node->childNeighbors.end (); ++it) {
+
+        loadTreeVaosDFS (*it);
+    }
+}
+
+
 static void key_callback (GLFWwindow* window, int key, int scancode, int action, int mods)
 {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose (window, GLFW_TRUE);
+    }
+}
+
+
+static void cursor_position_callback (GLFWwindow* window, double xpos, double ypos)
+{
+    mouse_xpos = (xpos - width / 2) / (width / 2) * inv_asp;
+    mouse_ypos = (height / 2 - ypos) / (height / 2);
+
+    //printf ("%lf, %lf\n", mouse_xpos, mouse_ypos);
+}
+
+
+static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
+{
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        activeNode_vaos->clear ();
+        inactiveNode_vaos->clear ();
+        
+        loadTreeVaosDFS (root);
+        restoreBioDFS (root);
+
+        //activeNode_vaos->clear ();
+        //inactiveNode_vaos->clear ();
+        
+        //loadTreeVaosDFS (root);
+        //restoreBioDFS (root);
     }
 }
 
@@ -186,6 +314,8 @@ GLFWwindow *createWindow ()
     }
 
     glfwSetKeyCallback (window, key_callback);
+    glfwSetCursorPosCallback(window, cursor_position_callback);
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
 
     printf ("%s\n", glGetString (GL_VERSION));
 
@@ -295,7 +425,7 @@ void fillQuadBuffers (GLuint* vao, Quad* quad)
 }
 
 
-void loadBackground (GLuint* background_vao)
+void loadBackground (GLuint* background_vao, GLuint* menu_vao)
 {
     glClearColor(0.05f, 0.05f, 0.15f, 0.0f);
 
@@ -308,7 +438,18 @@ void loadBackground (GLuint* background_vao)
 
     backgroundQuad->depth = 0.0f;
 
+    menuQuad = new Quad;
+
+    menuQuad->t1 = make_pair (-1.0f * inv_asp + 0.01f, 1.0f - 0.05f - 0.01f);
+    menuQuad->t2 = make_pair (-1.0f * inv_asp + 0.05f + 0.01f, 1.0f - 0.05f - 0.01f);
+    menuQuad->t3 = make_pair (-1.0f * inv_asp + 0.05f + 0.01f, 1.0f - 0.01f);
+    menuQuad->t4 = make_pair (-1.0f * inv_asp + 0.01f, 1.0f - 0.01f); 
+
+    menuQuad->depth = -0.03f;
+
+
     fillQuadBuffers (background_vao, backgroundQuad);
+    fillQuadBuffers (menu_vao, menuQuad);
 }
 
 
@@ -397,6 +538,7 @@ void preCompGraph ()
     root->x = 0.0;
     root->y = 0.0;
     root->status = 0x00;
+    root->parentNode = NULL;
 
     vector <Node*> nodes;
     vector <Node*> temp;
@@ -428,6 +570,7 @@ void preCompGraph ()
             newNode->x = x;
             newNode->y = y;
             newNode->status = 0x00;
+            newNode->parentNode = NULL;
 
             temp.push_back (newNode);
 
@@ -448,28 +591,6 @@ void preCompGraph ()
     }
 
     perLevelNodes.push_back (nodes);
-}
-
-
-void setNodeStatus (Node* node)
-{
-    int usedNeighborsNum = 0;
-
-    for (vector <Node*>::iterator it = node->childNodes.begin (); 
-        it != node->childNodes.end (); ++it) {
-
-        if ((*it)->status & (ACTIVE | INACTIVE)) {
-            usedNeighborsNum++;
-        }
-    }
-
-    if (usedNeighborsNum > 0) {
-        node->status &= ~ACTIVE;
-        node->status |= INACTIVE;
-    } else {
-        node->status &= ~INACTIVE;
-        node->status |= ACTIVE;
-    }
 }
 
 
@@ -497,46 +618,6 @@ void genTreeBuffersDFS (Node* node)
         edge_vaos->push_back (*edge_vao);
 
         genTreeBuffersDFS (*it);
-    }
-}
-
-
-void loadTreeVaosDFS (Node* node)
-{
-    if (node->status & BIO) {
-        return;
-    }
-
-    setNodeStatus (node);
-
-    if (node->status & ACTIVE) {
-        activeNode_vaos->push_back (node->vao);
-    } else if (node->status & INACTIVE) {
-        inactiveNode_vaos->push_back (node->vao);
-    }
-
-    node->status |= BIO;
-
-    for (vector <Node*>::iterator it = node->childNeighbors.begin ();
-        it != node->childNeighbors.end (); ++it) {
-
-        loadTreeVaosDFS (*it);
-    }
-}
-
-
-void restoreBioDFS (Node* node)
-{
-    if (!(node->status & BIO)) {
-        return;
-    }
-
-    node->status &= ~BIO;
-
-    for (vector <Node*>::iterator it = node->childNeighbors.begin ();
-        it != node->childNeighbors.end (); ++it) {
-
-        restoreBioDFS (*it);
     }
 }
 
@@ -652,7 +733,7 @@ void genTestNodes ()
 
             maxDeg = max (maxDeg, (int) (*i)->childNeighbors.size ());
 
-            (*i)->status |= INACTIVE;
+            //(*i)->status |= INACTIVE;
         }
 
         if (maxDeg > 0) {
@@ -698,12 +779,24 @@ void genTestNodes ()
                 j != (*i)->childNodes.end (); ++j) {
 
                 activeNodes.push_back (*j);
+                (*j)->parentNode = *i;
             }
         }
     }
 
     genTreeBuffersDFS (root);
     restoreBioDFS (root);
+    loadTreeVaosDFS (root);
+    restoreBioDFS (root);
+}
+
+
+bool menuDetect ()
+{
+    return mouse_xpos > menuQuad->t4.first 
+        && mouse_ypos < menuQuad->t4.second
+        && mouse_xpos < menuQuad->t2.first
+        && mouse_ypos > menuQuad->t2.second;
 }
 
 
@@ -716,16 +809,26 @@ int main ()
     edge_vaos = new vector <GLuint>;
 
     GLFWwindow *window = createWindow ();
-    GLuint background_vao;
+    GLuint background_vao,
+        menu_vao;
 
-    GLuint texture_backbround, texture_activeNode, texture_inactiveNode, texture_nodeCenter, texture_edge;
+    GLuint texture_backbround, 
+        texture_activeNode, 
+        texture_inactiveNode, 
+        texture_nodeCenter, 
+        texture_edge,
+        texture_inactiveMenu,
+        texture_activeMenu;
+
     loadTexture (&texture_backbround, "res/textures/background.png");
     loadTexture (&texture_activeNode, "res/textures/outer_active.png");
     loadTexture (&texture_inactiveNode, "res/textures/outer_inactive.png");
     loadTexture (&texture_nodeCenter, "res/textures/node_center.png");
     loadTexture (&texture_edge, "res/textures/edge.png");
+    loadTexture (&texture_inactiveMenu, "res/textures/menu_inactive.png");
+    loadTexture (&texture_activeMenu, "res/textures/menu_active.png");
 
-    loadBackground (&background_vao);
+    loadBackground (&background_vao, &menu_vao);
     
     genTestNodes ();
 
@@ -768,6 +871,14 @@ int main ()
 
         glBindTexture (GL_TEXTURE_2D, texture_backbround);
         glBindVertexArray (background_vao);
+        glDrawElements (GL_TRIANGLES, 3*2, GL_UNSIGNED_INT, (void*)0);
+
+        if (menuDetect ()) {
+            glBindTexture (GL_TEXTURE_2D, texture_activeMenu);    
+        } else {
+            glBindTexture (GL_TEXTURE_2D, texture_inactiveMenu);
+        }
+        glBindVertexArray (menu_vao);
         glDrawElements (GL_TRIANGLES, 3*2, GL_UNSIGNED_INT, (void*)0);
 
         drawObjectArray (texture_edge, edge_vaos);
