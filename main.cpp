@@ -55,7 +55,8 @@ int width;
 int height;
 
 Node* root;
-vector <GLuint>* node_vaos;
+vector <GLuint>* activeNode_vaos;
+vector <GLuint>* inactiveNode_vaos;
 vector <GLuint>* nodeCenter_vaos;
 vector <GLuint>* edge_vaos;
 
@@ -450,19 +451,39 @@ void preCompGraph ()
 }
 
 
-void nodeDFS (Node* node)
+void setNodeStatus (Node* node)
+{
+    int usedNeighborsNum = 0;
+
+    for (vector <Node*>::iterator it = node->childNodes.begin (); 
+        it != node->childNodes.end (); ++it) {
+
+        if ((*it)->status & (ACTIVE | INACTIVE)) {
+            usedNeighborsNum++;
+        }
+    }
+
+    if (usedNeighborsNum > 0) {
+        node->status &= ~ACTIVE;
+        node->status |= INACTIVE;
+    } else {
+        node->status &= ~INACTIVE;
+        node->status |= ACTIVE;
+    }
+}
+
+
+void genTreeBuffersDFS (Node* node)
 {
     if (node->status & BIO) {
         return;
     }
 
-    if (node->status & ACTIVE) {
-        fillTestNodeBuffers (&(node->vao), node->x, node->y);
-        node_vaos->push_back (node->vao);
-    }
+    fillTestNodeBuffers (&(node->vao), node->x, node->y);
 
     GLuint* nodeCenter_vao = new GLuint; 
     fillNodeCenterBuffers (nodeCenter_vao, node->x, node->y);
+
     nodeCenter_vaos->push_back (*nodeCenter_vao);
 
     node->status |= BIO;
@@ -470,30 +491,52 @@ void nodeDFS (Node* node)
     for (vector <Node*>::iterator it = node->childNodes.begin ();
         it != node->childNodes.end (); ++it) {
 
-        if ((*it)->status & ACTIVE && node->status & ACTIVE) {
-            GLuint* edge_vao = new GLuint;
-            fillEdgeBuffers (edge_vao, node, *it);
+        GLuint* edge_vao = new GLuint;
+        fillEdgeBuffers (edge_vao, node, *it);
 
-            edge_vaos->push_back (*edge_vao);
-        }
+        edge_vaos->push_back (*edge_vao);
 
-        nodeDFS (*it);
+        genTreeBuffersDFS (*it);
     }
 }
 
 
-void restoreStatusDFS (Node* node)
+void loadTreeVaosDFS (Node* node)
+{
+    if (node->status & BIO) {
+        return;
+    }
+
+    setNodeStatus (node);
+
+    if (node->status & ACTIVE) {
+        activeNode_vaos->push_back (node->vao);
+    } else if (node->status & INACTIVE) {
+        inactiveNode_vaos->push_back (node->vao);
+    }
+
+    node->status |= BIO;
+
+    for (vector <Node*>::iterator it = node->childNeighbors.begin ();
+        it != node->childNeighbors.end (); ++it) {
+
+        loadTreeVaosDFS (*it);
+    }
+}
+
+
+void restoreBioDFS (Node* node)
 {
     if (!(node->status & BIO)) {
         return;
     }
 
-    node->status = 0x00;
+    node->status &= ~BIO;
 
     for (vector <Node*>::iterator it = node->childNeighbors.begin ();
         it != node->childNeighbors.end (); ++it) {
 
-        nodeDFS (*it);
+        restoreBioDFS (*it);
     }
 }
 
@@ -609,7 +652,7 @@ void genTestNodes ()
 
             maxDeg = max (maxDeg, (int) (*i)->childNeighbors.size ());
 
-            (*i)->status |= UNUSED;
+            (*i)->status |= INACTIVE;
         }
 
         if (maxDeg > 0) {
@@ -659,29 +702,35 @@ void genTestNodes ()
         }
     }
 
-    nodeDFS (root);
-
+    genTreeBuffersDFS (root);
+    restoreBioDFS (root);
 }
 
 
 int main ()
 {
     root = new Node;
-    node_vaos = new vector <GLuint>;
+    activeNode_vaos = new vector <GLuint>;
+    inactiveNode_vaos = new vector <GLuint>;
     nodeCenter_vaos = new vector <GLuint>;
     edge_vaos = new vector <GLuint>;
 
     GLFWwindow *window = createWindow ();
     GLuint background_vao;
 
-    GLuint texture_backbround, texture_testNode, texture_nodeCenter, texture_edge;
+    GLuint texture_backbround, texture_activeNode, texture_inactiveNode, texture_nodeCenter, texture_edge;
     loadTexture (&texture_backbround, "res/textures/background.png");
-    loadTexture (&texture_testNode, "res/textures/outer_inactive.png");
+    loadTexture (&texture_activeNode, "res/textures/outer_active.png");
+    loadTexture (&texture_inactiveNode, "res/textures/outer_inactive.png");
     loadTexture (&texture_nodeCenter, "res/textures/node_center.png");
     loadTexture (&texture_edge, "res/textures/edge.png");
 
     loadBackground (&background_vao);
+    
     genTestNodes ();
+
+    loadTreeVaosDFS (root);
+    restoreBioDFS (root);
 
     std::string vertexShader, fragmentShader;
     ParseShader ("res/shaders/vertex.shader", "res/shaders/fragment.shader", &vertexShader, &fragmentShader);
@@ -723,7 +772,8 @@ int main ()
 
         drawObjectArray (texture_edge, edge_vaos);
         drawObjectArray (texture_nodeCenter, nodeCenter_vaos);
-        drawObjectArray (texture_testNode, node_vaos);
+        drawObjectArray (texture_activeNode, activeNode_vaos);
+        drawObjectArray (texture_inactiveNode, inactiveNode_vaos);
 
         glfwSwapBuffers (window);
         glfwPollEvents ();
