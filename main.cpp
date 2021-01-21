@@ -13,10 +13,12 @@
 #include <vector>
 #include <set>
 #include <map>
+#include <string>
 #include <math.h>
 #include <time.h>
 
-#include <ft2build.h>
+#include <freetype2/ft2build.h>
+#include <freetype2/freetype/freetype.h>
 #include FT_FREETYPE_H
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -58,9 +60,9 @@ struct Quad {
 
 struct Character {
     unsigned int TextureID;
-    glm::ivec2   Size;
-    glm::ivec2   Bearing;
-    unsigned int Advance;
+    glm::fvec2   Size;
+    glm::fvec2   Bearing;
+    double Advance;
 };
 
 float asp = 1080.0f / 1920.0f;
@@ -71,15 +73,15 @@ double mouse_xpos, mouse_ypos;
 bool clicked;
 
 Quad* menuQuad;
-
+map <char, Character>* characters;
 Node* root;
+
 vector <GLuint>* activeNode_vaos;
 vector <GLuint>* inactiveNode_vaos;
 vector <GLuint>* nodeCenter_vaos;
 vector <GLuint>* edge_vaos;
 vector <GLuint>* nodeGlare_vaos;
-
-map <char, Character> characters;
+vector <GLuint>* text_vaos;
 
 
 double dist (Node* node_1, Node* node_2)
@@ -821,13 +823,118 @@ void genTestNodes ()
 }
 
 
+void renderText (string* text, float x, float y, float scale)
+{
+    for (string::iterator it = text->begin ();
+    it != text->end (); ++it) {
+
+        Character ch = (*characters)[*it];
+
+        float xpos = x + ch.Bearing.x * scale;
+        float ypos = y - (ch.Size.y - ch.Bearing.y) * scale;
+
+        float w = ch.Size.x * scale;
+        float h = ch.Size.y * scale;
+
+        Quad* textBox = new Quad;
+
+        textBox->t4 = make_pair (xpos, ypos);
+        textBox->t1 = make_pair (xpos, ypos + h);
+        textBox->t2 = make_pair (xpos + w, ypos + h);
+        textBox->t3 = make_pair (xpos + w, ypos);
+        textBox->depth = -0.04f;
+
+        glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
+
+        GLuint* textVao = new GLuint;
+        fillQuadBuffers (textVao, textBox);
+        text_vaos->clear ();
+        text_vaos->push_back (*textVao);
+        drawObjectArray (ch.TextureID, text_vaos);
+        text_vaos->clear ();
+
+        delete textBox;
+        delete textVao;
+
+        //glPixelStorei (GL_PACK_ALIGNMENT, 4);
+
+        //printf ("%lf, %lf\n", xpos, ypos);
+
+        x += ch.Advance * scale;
+    }
+}
+
+
+void initText ()
+{
+    FT_Library ft;
+    if (FT_Init_FreeType (&ft)) {
+        printf ("ERROR::FREETYPE: Could not init FreeType Library\n");
+        return;
+    }
+
+    FT_Face face;
+    if (FT_New_Face (ft, "res/fonts/OpenSans-Regular.ttf", 0, &face)) {
+        printf ("ERROR::FREETYPE: Failed to load font\n");  
+        return;
+    }
+    FT_Set_Pixel_Sizes(face, 0, 48); 
+
+    for (unsigned char c = 0; c < 128; c++) {
+
+        if (FT_Load_Char (face, c, FT_LOAD_RENDER)) {
+            printf ("ERROR::FREETYTPE: Failed to load Glyph\n");
+            continue;
+        }
+        
+        glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
+        
+        unsigned int texture;
+        glGenTextures (1, &texture);
+        glBindTexture (GL_TEXTURE_2D, texture);
+        glTexImage2D (
+            GL_TEXTURE_2D,
+            0,
+            GL_RED,
+            face->glyph->bitmap.width,
+            face->glyph->bitmap.rows,
+            0,
+            GL_RED,
+            GL_UNSIGNED_BYTE,
+            face->glyph->bitmap.buffer
+        );
+    
+        glPixelStorei (GL_PACK_ALIGNMENT, 4);
+
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        Character character = {
+            texture, 
+            glm::fvec2 (face->glyph->bitmap.width / (double) width, face->glyph->bitmap.rows / (double) height),
+            glm::fvec2 (face->glyph->bitmap_left / (double) width, face->glyph->bitmap_top / (double) height),
+            (face->glyph->advance.x / (double) width) / 64.0f
+        };
+        characters->insert (pair<char, Character>(c, character));
+    }
+
+    FT_Done_Face(face);
+    FT_Done_FreeType(ft);
+}
+
+
 int main ()
 {
     root = new Node;
+    characters = new map <char, Character>;
+
     activeNode_vaos = new vector <GLuint>;
     inactiveNode_vaos = new vector <GLuint>;
     nodeCenter_vaos = new vector <GLuint>;
     edge_vaos = new vector <GLuint>;
+    text_vaos = new vector <GLuint>;
 
     GLFWwindow *window = createWindow ();
     GLuint background_vao,
@@ -853,6 +960,8 @@ int main ()
     
     genTestNodes ();
 
+    initText ();
+
     std::string vertexShader, fragmentShader;
     ParseShader ("res/shaders/vertex.shader", "res/shaders/fragment.shader", &vertexShader, &fragmentShader);
     unsigned int shader = CreateShader (vertexShader, fragmentShader);
@@ -877,58 +986,6 @@ int main ()
     glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glBlendEquation (GL_FUNC_ADD);
 
-    FT_Library ft;
-    if (FT_Init_FreeType (&ft)) {
-        printf ("ERROR::FREETYPE: Could not init FreeType Library\n");
-        return -1;
-    }
-
-    FT_Face face;
-    if (FT_New_Face (ft, "/usr/share/fonts/truetype/ubuntu/Ubuntu-MI.ttf", 0, &face)) {
-        printf ("ERROR::FREETYPE: Failed to load font\n");  
-        return -1;
-    }
-
-    glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
-    
-    for (unsigned char c = 0; c < 128; c++) {
-
-        if (FT_Load_Char (face, c, FT_LOAD_RENDER)) {
-            printf ("ERROR::FREETYTPE: Failed to load Glyph\n");
-            continue;
-        }
-
-        unsigned int texture;
-        glGenTextures (1, &texture);
-        glBindTexture (GL_TEXTURE_2D, texture);
-        glTexImage2D (
-            GL_TEXTURE_2D,
-            0,
-            GL_RED,
-            face->glyph->bitmap.width,
-            face->glyph->bitmap.rows,
-            0,
-            GL_RED,
-            GL_UNSIGNED_BYTE,
-            face->glyph->bitmap.buffer
-        );
-
-        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        Character character = {
-            texture, 
-            glm::ivec2 (face->glyph->bitmap.width, face->glyph->bitmap.rows),
-            glm::ivec2 (face->glyph->bitmap_left, face->glyph->bitmap_top),
-            face->glyph->advance.x
-        };
-        characters.insert (pair<char, Character>(c, character));
-    }
-
-    glPixelStorei (GL_PACK_ALIGNMENT, 4);
-
 
     while (!glfwWindowShouldClose (window)) {
 
@@ -948,6 +1005,9 @@ int main ()
         }
         glBindVertexArray (menu_vao);
         glDrawElements (GL_TRIANGLES, 3*2, GL_UNSIGNED_INT, (void*)0);
+
+        string lol ("lol23456**#$%&/()");
+        renderText (&lol, 0.0f, 0.0f, 1.0f);
 
         drawObjectArray (texture_edge, edge_vaos);
         drawObjectArray (texture_nodeCenter, nodeCenter_vaos);

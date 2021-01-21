@@ -17,7 +17,7 @@ void main ()
     if (fragUseTexture == 1.0) 
         texColor = texture2D (texture_0, UV);
     else
-        texColor = vec4 (fragmentColor, 0.3f);
+        texColor = vec4 (fragmentColor, 1.0f);
 
     if (texColor.a < 0.1) {
         discard;
