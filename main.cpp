@@ -54,6 +54,7 @@ float inv_asp = 1920.0f / 1080.0f;
 int width;
 int height;
 double mouse_xpos, mouse_ypos;
+bool clicked;
 
 Quad* menuQuad;
 
@@ -76,8 +77,9 @@ double dist (Node* node_1, Node* node_2)
 
 bool nodeDetect (Node* node)
 {
-    return sqrt ((node->x - mouse_xpos) * (node->x - mouse_xpos)
-    + (node->y - mouse_ypos) * (node->y - mouse_ypos)) < 0.05f;
+    return (sqrt ((node->x - mouse_xpos) * (node->x - mouse_xpos)
+    + (node->y - mouse_ypos) * (node->y - mouse_ypos)) < 0.05f)
+    && clicked;
 }
 
 
@@ -100,49 +102,45 @@ void restoreBioDFS (Node* node)
 void setNodeStatus (Node* node)
 {
     int usedNeighborsNum = 0;
-/*
+
     if (nodeDetect (node) && node->status & ACTIVE) {
         node->status |= UNUSED;
     }
-*/
-    for (vector <Node*>::iterator it = node->childNodes.begin (); 
+
+    for (vector <Node*>::iterator it = node->childNodes.begin ();
         it != node->childNodes.end (); ++it) {
 
-        if (nodeDetect (*it) && (*it)->status & ACTIVE) {
+        if (nodeDetect (*it) && ((*it)->status & ACTIVE)) {
             (*it)->status &= ~(ACTIVE | INACTIVE);
             (*it)->status |= UNUSED;
         }
 
-        if ((*it)->status & (ACTIVE | INACTIVE)) {
+        if (!((*it)->status & UNUSED)) {
             usedNeighborsNum++;
         }
     }
-/*
-    if (node->parentNode != NULL) {
+
+    if (node->parentNode != NULL ){
         if (nodeDetect (node->parentNode) && node->parentNode->status & ACTIVE) {
             node->parentNode->status &= ~(ACTIVE | INACTIVE);
             node->parentNode->status |= UNUSED;
         }
 
-        if (node->parentNode->status & (ACTIVE | INACTIVE)) {
+        if (!(node->parentNode->status & UNUSED)) {
             usedNeighborsNum++;
         }
     }
 
-    if (node->status & UNUSED) {
-        node->status &= ~(ACTIVE | INACTIVE);
-    }
-*/
-    if (usedNeighborsNum == 1 && node->parentNode == NULL) {
-        usedNeighborsNum = 0;
-    }
-
-    if (usedNeighborsNum > 0) {
+    if (usedNeighborsNum > 1) {
         node->status &= ~ACTIVE;
         node->status |= INACTIVE;
     } else {
         node->status &= ~INACTIVE;
         node->status |= ACTIVE;
+    }
+
+    if (node->status & UNUSED) {
+        node->status &= ~(ACTIVE | INACTIVE);
     }
 }
 
@@ -163,8 +161,8 @@ void loadTreeVaosDFS (Node* node)
 
     node->status |= BIO;
 
-    for (vector <Node*>::iterator it = node->childNeighbors.begin ();
-        it != node->childNeighbors.end (); ++it) {
+    for (vector <Node*>::iterator it = node->childNodes.begin ();
+        it != node->childNodes.end (); ++it) {
 
         loadTreeVaosDFS (*it);
     }
@@ -191,17 +189,15 @@ static void cursor_position_callback (GLFWwindow* window, double xpos, double yp
 static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        clicked = true;
+        
         activeNode_vaos->clear ();
         inactiveNode_vaos->clear ();
         
         loadTreeVaosDFS (root);
         restoreBioDFS (root);
 
-        //activeNode_vaos->clear ();
-        //inactiveNode_vaos->clear ();
-        
-        //loadTreeVaosDFS (root);
-        //restoreBioDFS (root);
+        clicked = false;
     }
 }
 
@@ -831,9 +827,6 @@ int main ()
     loadBackground (&background_vao, &menu_vao);
     
     genTestNodes ();
-
-    loadTreeVaosDFS (root);
-    restoreBioDFS (root);
 
     std::string vertexShader, fragmentShader;
     ParseShader ("res/shaders/vertex.shader", "res/shaders/fragment.shader", &vertexShader, &fragmentShader);
