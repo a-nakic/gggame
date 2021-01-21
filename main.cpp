@@ -39,6 +39,7 @@ struct Node {
     
     uint8_t status;
     int deg;
+    int value;
     double x, y;
 
     vector <Node*> parentNeighbors;
@@ -59,10 +60,17 @@ struct Quad {
 };
 
 struct Character {
-    unsigned int TextureID;
+    GLuint texture;
+    GLuint vao;
     glm::fvec2   Size;
     glm::fvec2   Bearing;
     double Advance;
+};
+
+struct TextObject {
+    vector <Character>* text;
+    GLuint textBackVao;
+    GLuint textBackTexture;
 };
 
 float asp = 1080.0f / 1920.0f;
@@ -81,7 +89,8 @@ vector <GLuint>* inactiveNode_vaos;
 vector <GLuint>* nodeCenter_vaos;
 vector <GLuint>* edge_vaos;
 vector <GLuint>* nodeGlare_vaos;
-vector <GLuint>* text_vaos;
+
+vector <TextObject*>* node_values;
 
 
 double dist (Node* node_1, Node* node_2)
@@ -107,6 +116,224 @@ bool nodeDetect (Node* node)
     return (sqrt ((node->x - mouse_xpos) * (node->x - mouse_xpos)
     + (node->y - mouse_ypos) * (node->y - mouse_ypos)) < 0.05f)
     && clicked;
+}
+
+
+void fillQuadBuffers (GLuint* vao, Quad* quad, bool useTexture)
+{
+    glGenVertexArrays (1, vao);
+
+    GLfloat position_buffer_data_0[] = {
+        quad->t1.first, quad->t1.second, quad->depth,
+        quad->t2.first, quad->t2.second, quad->depth,
+        quad->t3.first, quad->t3.second, quad->depth,
+        quad->t4.first, quad->t4.second, quad->depth
+    };
+
+    GLfloat texture_buffer_data_0[] = {
+        0.0f, 0.0f,    
+        1.0f, 0.0f,  
+        1.0f, 1.0f,
+        0.0f, 1.0f
+    };
+
+    float f = 1.0f;
+    if (!useTexture) {
+        f = 0.0f;
+    }
+
+    GLfloat use_texture_data_0[] = {
+        f, f, f, f
+    };
+
+    GLfloat color_buffer_data_0[] = {
+        0.7f, 0.7f, 0.7f,//0
+        0.7f, 0.7f, 0.7f,//1
+        0.7f, 0.7f, 0.7f,//2
+        0.7f, 0.7f, 0.7f //3     
+    };
+
+    GLuint indices_0[] = {
+        0, 1, 2,
+        0, 3, 2,
+    };
+
+    glBindVertexArray(*vao);
+
+    GLuint textureBuffer_0;
+    glGenBuffers (1, &textureBuffer_0);
+    glBindBuffer (GL_ARRAY_BUFFER, textureBuffer_0);
+    glBufferData (GL_ARRAY_BUFFER, sizeof (texture_buffer_data_0), texture_buffer_data_0, GL_STATIC_DRAW);
+
+    GLuint colorBuffer_0;
+    glGenBuffers (1, &colorBuffer_0);
+    glBindBuffer (GL_ARRAY_BUFFER, colorBuffer_0);
+    glBufferData (GL_ARRAY_BUFFER, sizeof (color_buffer_data_0), color_buffer_data_0, GL_STATIC_DRAW);
+
+    GLuint positionBuffer_0;
+    glGenBuffers (1, &positionBuffer_0);
+    glBindBuffer (GL_ARRAY_BUFFER, positionBuffer_0);
+    glBufferData (GL_ARRAY_BUFFER, sizeof (position_buffer_data_0), position_buffer_data_0, GL_STATIC_DRAW);
+
+    GLuint useTextureBuffer_0;
+    glGenBuffers (1, &useTextureBuffer_0);
+    glBindBuffer (GL_ARRAY_BUFFER, useTextureBuffer_0);
+    glBufferData (GL_ARRAY_BUFFER, sizeof (use_texture_data_0), use_texture_data_0, GL_STATIC_DRAW);
+
+    GLuint ibo_0;
+    glGenBuffers (1, &ibo_0);
+    glBindBuffer (GL_ELEMENT_ARRAY_BUFFER, ibo_0);
+    glBufferData (GL_ELEMENT_ARRAY_BUFFER, sizeof (indices_0), indices_0, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray (0);
+    glBindBuffer (GL_ARRAY_BUFFER, positionBuffer_0);
+    glVertexAttribPointer (0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+    glEnableVertexAttribArray (1);
+    glBindBuffer (GL_ARRAY_BUFFER, colorBuffer_0);
+    glVertexAttribPointer (1, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    
+    glEnableVertexAttribArray(2);
+    glBindBuffer (GL_ARRAY_BUFFER, textureBuffer_0);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+    glEnableVertexAttribArray(3);
+    glBindBuffer (GL_ARRAY_BUFFER, useTextureBuffer_0);
+    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, 0, (void*)0);
+}
+
+
+TextObject* loadText (string* text, float x, float y, float scale)
+{
+    TextObject* ret = new TextObject;
+    vector <Character>* vec = new vector <Character>;
+
+    float max_x = -20.0f, max_y = -20.0f, min_x = 20.0f, min_y = 20.0f;
+
+    for (string::iterator it = text->begin ();
+    it != text->end (); ++it) {
+
+        Character ch = (*characters)[*it];
+
+        float xpos = x + ch.Bearing.x * scale;
+        float ypos = y - (ch.Size.y - ch.Bearing.y) * scale;
+
+        float w = ch.Size.x * scale;
+        float h = ch.Size.y * scale;
+
+        max_x = max (max_x, xpos + w);
+        max_y = max (max_y, ypos + h);
+        min_x = min (min_x, xpos);
+        min_y = min (min_y, ypos);
+
+        Quad* textBox = new Quad;
+
+        textBox->t4 = make_pair (xpos, ypos);
+        textBox->t1 = make_pair (xpos, ypos + h);
+        textBox->t2 = make_pair (xpos + w, ypos + h);
+        textBox->t3 = make_pair (xpos + w, ypos);
+        textBox->depth = -0.04f;
+
+        GLuint* textVao = new GLuint;
+        fillQuadBuffers (textVao, textBox, false);
+        ch.vao = *textVao;
+
+        vec->push_back (ch);
+
+        delete textBox;
+        delete textVao;
+
+        x += ch.Advance * scale;
+    }
+
+    Quad* textBack = new Quad;
+
+    textBack->t4 = make_pair (min_x - 0.01f, min_y - 0.01f);
+    textBack->t1 = make_pair (min_x - 0.01f, max_y + 0.01f);
+    textBack->t2 = make_pair (max_x + 0.01f, max_y + 0.01f);
+    textBack->t3 = make_pair (max_x + 0.01f, min_y - 0.01f);
+    textBack->depth = -0.039f;
+
+    GLuint* backVao = new GLuint;
+    fillQuadBuffers (backVao, textBack, true);
+
+    ret->textBackVao = *backVao;
+    ret->text = vec;
+
+    return ret;
+}
+
+
+void initText ()
+{
+    FT_Library ft;
+    if (FT_Init_FreeType (&ft)) {
+        printf ("ERROR::FREETYPE: Could not init FreeType Library\n");
+        return;
+    }
+
+    FT_Face face;
+    if (FT_New_Face (ft, "res/fonts/OpenSans-Regular.ttf", 0, &face)) {
+        printf ("ERROR::FREETYPE: Failed to load font\n");  
+        return;
+    }
+    FT_Set_Pixel_Sizes(face, 0, 48); 
+
+    for (unsigned char c = 0; c < 128; c++) {
+
+        if (FT_Load_Char (face, c, FT_LOAD_RENDER)) {
+            printf ("ERROR::FREETYTPE: Failed to load Glyph\n");
+            continue;
+        }
+        
+        glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
+        
+        unsigned int texture;
+        glGenTextures (1, &texture);
+        glBindTexture (GL_TEXTURE_2D, texture);
+        glTexImage2D (
+            GL_TEXTURE_2D,
+            0,
+            GL_RED,
+            face->glyph->bitmap.width,
+            face->glyph->bitmap.rows,
+            0,
+            GL_RED,
+            GL_UNSIGNED_BYTE,
+            face->glyph->bitmap.buffer
+        );
+    
+        glPixelStorei (GL_PACK_ALIGNMENT, 4);
+
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        Character character = {
+            texture,
+            NULL, 
+            glm::fvec2 (face->glyph->bitmap.width / (double) width, face->glyph->bitmap.rows / (double) height),
+            glm::fvec2 (face->glyph->bitmap_left / (double) width, face->glyph->bitmap_top / (double) height),
+            (face->glyph->advance.x / (double) width) / 64.0f
+        };
+        characters->insert (pair<char, Character>(c, character));
+    }
+
+    FT_Done_Face(face);
+    FT_Done_FreeType(ft);
+}
+
+
+void renderText (TextObject* textObject)
+{
+    for (vector <Character>::iterator it = textObject->text->begin ();
+    it != textObject->text->end (); ++it) {
+
+        glBindTexture (GL_TEXTURE_2D, (*it).texture);
+        glBindVertexArray ((*it).vao);
+        glDrawElements (GL_TRIANGLES, 3*2, GL_UNSIGNED_INT, (void*)0);  
+    }
 }
 
 
@@ -168,6 +395,12 @@ void setNodeStatus (Node* node)
 
     if (node->status & UNUSED) {
         node->status &= ~(ACTIVE | INACTIVE);
+    } else {
+        string str; 
+        str.push_back((char) (node->value / 10 + '0'));
+        str.push_back((char) (node->value % 10 + '0'));
+        
+        node_values->push_back (loadText (&str, node->x - 0.023f, node->y - 0.024f, 1.5f));
     }
 }
 
@@ -220,6 +453,7 @@ static void mouse_button_callback(GLFWwindow* window, int button, int action, in
         
         activeNode_vaos->clear ();
         inactiveNode_vaos->clear ();
+        node_values->clear ();
         
         loadTreeVaosDFS (root);
         restoreBioDFS (root);
@@ -376,88 +610,6 @@ void loadTexture (GLuint *texture, const char* path)
 }
 
 
-void fillQuadBuffers (GLuint* vao, Quad* quad)
-{
-    glGenVertexArrays (1, vao);
-
-    GLfloat position_buffer_data_0[] = {
-        quad->t1.first, quad->t1.second, quad->depth,
-        quad->t2.first, quad->t2.second, quad->depth,
-        quad->t3.first, quad->t3.second, quad->depth,
-        quad->t4.first, quad->t4.second, quad->depth
-    };
-
-    GLfloat texture_buffer_data_0[] = {
-        0.0f, 0.0f,    
-        1.0f, 0.0f,  
-        1.0f, 1.0f,
-        0.0f, 1.0f
-    };
-
-    GLfloat use_texture_data_0[] = {
-        1.0f,
-        1.0f,
-        1.0f,
-        1.0f
-    };
-
-    GLfloat color_buffer_data_0[] = {
-        1.0f, 0.0f, 0.0f,//0
-        0.0f, 1.0f, 0.0f,//1
-        0.0f, 0.0f, 1.0f,//2
-        0.5f, 0.2f, 0.1f //3     
-    };
-
-    GLuint indices_0[] = {
-        0, 1, 2,
-        0, 3, 2,
-    };
-
-    glBindVertexArray(*vao);
-
-    GLuint textureBuffer_0;
-    glGenBuffers (1, &textureBuffer_0);
-    glBindBuffer (GL_ARRAY_BUFFER, textureBuffer_0);
-    glBufferData (GL_ARRAY_BUFFER, sizeof (texture_buffer_data_0), texture_buffer_data_0, GL_STATIC_DRAW);
-
-    GLuint colorBuffer_0;
-    glGenBuffers (1, &colorBuffer_0);
-    glBindBuffer (GL_ARRAY_BUFFER, colorBuffer_0);
-    glBufferData (GL_ARRAY_BUFFER, sizeof (color_buffer_data_0), color_buffer_data_0, GL_STATIC_DRAW);
-
-    GLuint positionBuffer_0;
-    glGenBuffers (1, &positionBuffer_0);
-    glBindBuffer (GL_ARRAY_BUFFER, positionBuffer_0);
-    glBufferData (GL_ARRAY_BUFFER, sizeof (position_buffer_data_0), position_buffer_data_0, GL_STATIC_DRAW);
-
-    GLuint useTextureBuffer_0;
-    glGenBuffers (1, &useTextureBuffer_0);
-    glBindBuffer (GL_ARRAY_BUFFER, useTextureBuffer_0);
-    glBufferData (GL_ARRAY_BUFFER, sizeof (use_texture_data_0), use_texture_data_0, GL_STATIC_DRAW);
-
-    GLuint ibo_0;
-    glGenBuffers (1, &ibo_0);
-    glBindBuffer (GL_ELEMENT_ARRAY_BUFFER, ibo_0);
-    glBufferData (GL_ELEMENT_ARRAY_BUFFER, sizeof (indices_0), indices_0, GL_STATIC_DRAW);
-
-    glEnableVertexAttribArray (0);
-    glBindBuffer (GL_ARRAY_BUFFER, positionBuffer_0);
-    glVertexAttribPointer (0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-
-    glEnableVertexAttribArray (1);
-    glBindBuffer (GL_ARRAY_BUFFER, colorBuffer_0);
-    glVertexAttribPointer (1, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    
-    glEnableVertexAttribArray(2);
-    glBindBuffer (GL_ARRAY_BUFFER, textureBuffer_0);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
-
-    glEnableVertexAttribArray(3);
-    glBindBuffer (GL_ARRAY_BUFFER, useTextureBuffer_0);
-    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, 0, (void*)0);
-}
-
-
 void loadBackground (GLuint* background_vao, GLuint* menu_vao)
 {
     glClearColor(0.05f, 0.05f, 0.15f, 0.0f);
@@ -481,8 +633,8 @@ void loadBackground (GLuint* background_vao, GLuint* menu_vao)
     menuQuad->depth = -0.03f;
 
 
-    fillQuadBuffers (background_vao, backgroundQuad);
-    fillQuadBuffers (menu_vao, menuQuad);
+    fillQuadBuffers (background_vao, backgroundQuad, true);
+    fillQuadBuffers (menu_vao, menuQuad, true);
 }
 
 
@@ -510,7 +662,7 @@ void fillTestNodeBuffers (GLuint* vao, GLfloat x, GLfloat y)
 
     nodeQuad->depth = -0.02f;
 
-    fillQuadBuffers (vao, nodeQuad);
+    fillQuadBuffers (vao, nodeQuad, true);
 }
 
 
@@ -525,7 +677,7 @@ void fillNodeCenterBuffers (GLuint* vao, GLfloat x, GLfloat y)
 
     nodeQuad->depth = -0.015f;
 
-    fillQuadBuffers (vao, nodeQuad);
+    fillQuadBuffers (vao, nodeQuad, true);
 }
 
 
@@ -563,7 +715,7 @@ void fillEdgeBuffers (GLuint* vao, Node* node_1, Node* node_2)
 
     nodeQuad->depth = -0.01f;
 
-    fillQuadBuffers (vao, nodeQuad);
+    fillQuadBuffers (vao, nodeQuad, true);
 }
 
 
@@ -766,6 +918,8 @@ void genTestNodes ()
             i != activeNodes.end (); ++i) {
 
             maxDeg = max (maxDeg, (int) (*i)->childNeighbors.size ());
+
+            (*i)->value = rand () % 20;
         }
 
         if (maxDeg > 0) {
@@ -823,108 +977,6 @@ void genTestNodes ()
 }
 
 
-void renderText (string* text, float x, float y, float scale)
-{
-    for (string::iterator it = text->begin ();
-    it != text->end (); ++it) {
-
-        Character ch = (*characters)[*it];
-
-        float xpos = x + ch.Bearing.x * scale;
-        float ypos = y - (ch.Size.y - ch.Bearing.y) * scale;
-
-        float w = ch.Size.x * scale;
-        float h = ch.Size.y * scale;
-
-        Quad* textBox = new Quad;
-
-        textBox->t4 = make_pair (xpos, ypos);
-        textBox->t1 = make_pair (xpos, ypos + h);
-        textBox->t2 = make_pair (xpos + w, ypos + h);
-        textBox->t3 = make_pair (xpos + w, ypos);
-        textBox->depth = -0.04f;
-
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
-
-        GLuint* textVao = new GLuint;
-        fillQuadBuffers (textVao, textBox);
-        text_vaos->clear ();
-        text_vaos->push_back (*textVao);
-        drawObjectArray (ch.TextureID, text_vaos);
-        text_vaos->clear ();
-
-        delete textBox;
-        delete textVao;
-
-        //glPixelStorei (GL_PACK_ALIGNMENT, 4);
-
-        //printf ("%lf, %lf\n", xpos, ypos);
-
-        x += ch.Advance * scale;
-    }
-}
-
-
-void initText ()
-{
-    FT_Library ft;
-    if (FT_Init_FreeType (&ft)) {
-        printf ("ERROR::FREETYPE: Could not init FreeType Library\n");
-        return;
-    }
-
-    FT_Face face;
-    if (FT_New_Face (ft, "res/fonts/OpenSans-Regular.ttf", 0, &face)) {
-        printf ("ERROR::FREETYPE: Failed to load font\n");  
-        return;
-    }
-    FT_Set_Pixel_Sizes(face, 0, 48); 
-
-    for (unsigned char c = 0; c < 128; c++) {
-
-        if (FT_Load_Char (face, c, FT_LOAD_RENDER)) {
-            printf ("ERROR::FREETYTPE: Failed to load Glyph\n");
-            continue;
-        }
-        
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
-        
-        unsigned int texture;
-        glGenTextures (1, &texture);
-        glBindTexture (GL_TEXTURE_2D, texture);
-        glTexImage2D (
-            GL_TEXTURE_2D,
-            0,
-            GL_RED,
-            face->glyph->bitmap.width,
-            face->glyph->bitmap.rows,
-            0,
-            GL_RED,
-            GL_UNSIGNED_BYTE,
-            face->glyph->bitmap.buffer
-        );
-    
-        glPixelStorei (GL_PACK_ALIGNMENT, 4);
-
-        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        Character character = {
-            texture, 
-            glm::fvec2 (face->glyph->bitmap.width / (double) width, face->glyph->bitmap.rows / (double) height),
-            glm::fvec2 (face->glyph->bitmap_left / (double) width, face->glyph->bitmap_top / (double) height),
-            (face->glyph->advance.x / (double) width) / 64.0f
-        };
-        characters->insert (pair<char, Character>(c, character));
-    }
-
-    FT_Done_Face(face);
-    FT_Done_FreeType(ft);
-}
-
-
 int main ()
 {
     root = new Node;
@@ -934,7 +986,7 @@ int main ()
     inactiveNode_vaos = new vector <GLuint>;
     nodeCenter_vaos = new vector <GLuint>;
     edge_vaos = new vector <GLuint>;
-    text_vaos = new vector <GLuint>;
+    node_values = new vector <TextObject*>;
 
     GLFWwindow *window = createWindow ();
     GLuint background_vao,
@@ -961,6 +1013,9 @@ int main ()
     genTestNodes ();
 
     initText ();
+
+    string lol ("23");
+    TextObject* testText = loadText (&lol, -0.023f, -0.024f, 1.5f);
 
     std::string vertexShader, fragmentShader;
     ParseShader ("res/shaders/vertex.shader", "res/shaders/fragment.shader", &vertexShader, &fragmentShader);
@@ -1006,13 +1061,17 @@ int main ()
         glBindVertexArray (menu_vao);
         glDrawElements (GL_TRIANGLES, 3*2, GL_UNSIGNED_INT, (void*)0);
 
-        string lol ("lol23456**#$%&/()");
-        renderText (&lol, 0.0f, 0.0f, 1.0f);
-
         drawObjectArray (texture_edge, edge_vaos);
         drawObjectArray (texture_nodeCenter, nodeCenter_vaos);
         drawObjectArray (texture_activeNode, activeNode_vaos);
         drawObjectArray (texture_inactiveNode, inactiveNode_vaos);
+
+        for (vector <TextObject*>::iterator it = node_values->begin ();
+        it != node_values->end (); ++it) {
+            
+            renderText (*it);
+            printf ("done.\n");
+        }
 
         glfwSwapBuffers (window);
         glfwPollEvents ();
