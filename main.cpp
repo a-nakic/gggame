@@ -1,16 +1,23 @@
 #include <GL/glew.h>
 #include <GL/glut.h>
+
 #include <GLFW/glfw3.h>
+
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <iostream>
 #include <vector>
 #include <set>
+#include <map>
 #include <math.h>
 #include <time.h>
+
+#include <ft2build.h>
+#include FT_FREETYPE_H
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "Dependencies/std_image.h"
@@ -49,6 +56,13 @@ struct Quad {
     GLfloat depth;
 };
 
+struct Character {
+    unsigned int TextureID;
+    glm::ivec2   Size;
+    glm::ivec2   Bearing;
+    unsigned int Advance;
+};
+
 float asp = 1080.0f / 1920.0f;
 float inv_asp = 1920.0f / 1080.0f;
 int width;
@@ -65,6 +79,8 @@ vector <GLuint>* nodeCenter_vaos;
 vector <GLuint>* edge_vaos;
 vector <GLuint>* nodeGlare_vaos;
 
+map <char, Character> characters;
+
 
 double dist (Node* node_1, Node* node_2)
 {
@@ -72,6 +88,15 @@ double dist (Node* node_1, Node* node_2)
     double y = node_1->y - node_2->y;
 
     return sqrt (x * x + y * y); 
+}
+
+
+bool menuDetect ()
+{
+    return mouse_xpos > menuQuad->t4.first 
+        && mouse_ypos < menuQuad->t4.second
+        && mouse_xpos < menuQuad->t2.first
+        && mouse_ypos > menuQuad->t2.second;
 }
 
 
@@ -202,6 +227,15 @@ static void mouse_button_callback(GLFWwindow* window, int button, int action, in
 }
 
 
+void framebuffer_size_callback(GLFWwindow* window, int local_width, int local_height)
+{
+    width = local_width;
+    height = local_height;
+
+    glViewport(0, 0, width, height);
+}
+
+
 static void ParseShader (const char *vertexShaderFilePath, const char *fragmentShaderFilePath, std::string *vertexShaderSource, std::string *fragmentShaderSource)
 {
     FILE *shaderFile;
@@ -262,7 +296,7 @@ static unsigned int CreateShader (const std::string& vertexShader, const std::st
 
     glAttachShader (program, vs);
     glAttachShader (program, fs);
-    glBindFragDataLocation(program, 0, "color");
+    //glBindFragDataLocation(program, 0, "FragColor");
     glLinkProgram (program);
     glValidateProgram (program);
 
@@ -312,6 +346,7 @@ GLFWwindow *createWindow ()
     glfwSetKeyCallback (window, key_callback);
     glfwSetCursorPosCallback(window, cursor_position_callback);
     glfwSetMouseButtonCallback(window, mouse_button_callback);
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
     printf ("%s\n", glGetString (GL_VERSION));
 
@@ -451,6 +486,7 @@ void loadBackground (GLuint* background_vao, GLuint* menu_vao)
 
 void drawObjectArray (GLuint texture, vector <GLuint>* objects)
 {
+    glActiveTexture (GL_TEXTURE0);
     glBindTexture (GL_TEXTURE_2D, texture);
 
     for (vector <GLuint>::iterator it = objects->begin (); it != objects->end (); ++it) {
@@ -728,8 +764,6 @@ void genTestNodes ()
             i != activeNodes.end (); ++i) {
 
             maxDeg = max (maxDeg, (int) (*i)->childNeighbors.size ());
-
-            //(*i)->status |= INACTIVE;
         }
 
         if (maxDeg > 0) {
@@ -787,15 +821,6 @@ void genTestNodes ()
 }
 
 
-bool menuDetect ()
-{
-    return mouse_xpos > menuQuad->t4.first 
-        && mouse_ypos < menuQuad->t4.second
-        && mouse_xpos < menuQuad->t2.first
-        && mouse_ypos > menuQuad->t2.second;
-}
-
-
 int main ()
 {
     root = new Node;
@@ -831,6 +856,7 @@ int main ()
     std::string vertexShader, fragmentShader;
     ParseShader ("res/shaders/vertex.shader", "res/shaders/fragment.shader", &vertexShader, &fragmentShader);
     unsigned int shader = CreateShader (vertexShader, fragmentShader);
+    glUseProgram (shader);
 
 	GLuint matrixID = glGetUniformLocation(shader, "MVP");
 
@@ -851,17 +877,66 @@ int main ()
     glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glBlendEquation (GL_FUNC_ADD);
 
+    FT_Library ft;
+    if (FT_Init_FreeType (&ft)) {
+        printf ("ERROR::FREETYPE: Could not init FreeType Library\n");
+        return -1;
+    }
+
+    FT_Face face;
+    if (FT_New_Face (ft, "/usr/share/fonts/truetype/ubuntu/Ubuntu-MI.ttf", 0, &face)) {
+        printf ("ERROR::FREETYPE: Failed to load font\n");  
+        return -1;
+    }
+
+    glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
+    
+    for (unsigned char c = 0; c < 128; c++) {
+
+        if (FT_Load_Char (face, c, FT_LOAD_RENDER)) {
+            printf ("ERROR::FREETYTPE: Failed to load Glyph\n");
+            continue;
+        }
+
+        unsigned int texture;
+        glGenTextures (1, &texture);
+        glBindTexture (GL_TEXTURE_2D, texture);
+        glTexImage2D (
+            GL_TEXTURE_2D,
+            0,
+            GL_RED,
+            face->glyph->bitmap.width,
+            face->glyph->bitmap.rows,
+            0,
+            GL_RED,
+            GL_UNSIGNED_BYTE,
+            face->glyph->bitmap.buffer
+        );
+
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        Character character = {
+            texture, 
+            glm::ivec2 (face->glyph->bitmap.width, face->glyph->bitmap.rows),
+            glm::ivec2 (face->glyph->bitmap_left, face->glyph->bitmap_top),
+            face->glyph->advance.x
+        };
+        characters.insert (pair<char, Character>(c, character));
+    }
+
+    glPixelStorei (GL_PACK_ALIGNMENT, 4);
+
 
     while (!glfwWindowShouldClose (window)) {
 
         glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
-        glUseProgram (shader);
-
-        glActiveTexture (GL_TEXTURE0);
-        
         glUniformMatrix4fv(matrixID, 1, GL_FALSE, &MVP[0][0]);
 
+        glActiveTexture (GL_TEXTURE0);
         glBindTexture (GL_TEXTURE_2D, texture_backbround);
         glBindVertexArray (background_vao);
         glDrawElements (GL_TRIANGLES, 3*2, GL_UNSIGNED_INT, (void*)0);
