@@ -538,7 +538,7 @@ void getNodesDFS (Node* node)
 }
 
 
-int getMaxWin (vector <Node*>::iterator it, vector <Node*>::iterator skip, int userTurnsLeft, int pcTurnsLeft, int userSum, int pcSum)
+int getMaxWin (int it, int skip, int userTurnsLeft, int pcTurnsLeft, int userSum, int pcSum)
 {
     int retMaxWin = 0;
 
@@ -550,15 +550,27 @@ int getMaxWin (vector <Node*>::iterator it, vector <Node*>::iterator skip, int u
         }
     }
 
-    if (it != usedTreeNodes->end ()) {
-        if (++it != usedTreeNodes->end () && it != skip) {
-            if (userTurnsLeft > 0) {
-                retMaxWin += getMaxWin (it, skip, userTurnsLeft - 1, pcTurnsLeft, userSum + (*it)->value, pcSum);
-            }
+    if (it == skip) {
+        it++;
+        pcTurnsLeft--;
+    }
 
-            if (pcTurnsLeft > 0) {
-                retMaxWin += getMaxWin (it, skip, userTurnsLeft, pcTurnsLeft - 1, userSum, pcSum + (*it)->value);
-            }
+    if (it < (int) usedTreeNodes->size ()) {
+
+        if (pcTurnsLeft > 0) {
+            pcSum += (*usedTreeNodes)[it]->value;
+
+            retMaxWin += getMaxWin (it + 1, skip, userTurnsLeft, pcTurnsLeft - 1, userSum, pcSum);
+
+            pcSum -= (*usedTreeNodes)[it]->value;
+        }
+
+        if (userTurnsLeft > 0) {
+            userSum += (*usedTreeNodes)[it]->value;
+
+            retMaxWin += getMaxWin (it + 1, skip, userTurnsLeft - 1, pcTurnsLeft, userSum, pcSum);
+
+            userSum -= (*usedTreeNodes)[it]->value;
         }
     }
 
@@ -603,7 +615,7 @@ void computerTurn ()
             continue;
         }
 
-        //temp = getMaxWin (usedTreeNodes->begin (), it, userTurns, pcTurns, sum_user, sum_pc + (*it)->value);
+        temp = getMaxWin (0, (int) (it - usedTreeNodes->begin ()), userTurns, pcTurns, sum_user, sum_pc + (*it)->value);
 
         printf ("%d\n", temp);
 
@@ -619,7 +631,7 @@ void computerTurn ()
         node->status |= UNUSED;
         sum_pc += node->value;
     }
-    
+
     loadTreeVaosDFS (root);
     restoreBioDFS (root);
 }
