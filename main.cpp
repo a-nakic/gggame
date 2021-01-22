@@ -80,6 +80,8 @@ int height;
 double mouse_xpos, mouse_ypos;
 bool clicked;
 
+int sum_user = 0, sum_pc = 0;
+
 Quad* menuQuad;
 map <char, Character>* characters;
 Node* root;
@@ -313,9 +315,9 @@ void initText ()
         Character character = {
             texture,
             NULL, 
-            glm::fvec2 (face->glyph->bitmap.width / (double) width, face->glyph->bitmap.rows / (double) height),
-            glm::fvec2 (face->glyph->bitmap_left / (double) width, face->glyph->bitmap_top / (double) height),
-            (face->glyph->advance.x / (double) width) / 64.0f
+            glm::fvec2 (face->glyph->bitmap.width / (double) height, face->glyph->bitmap.rows / (double) height),
+            glm::fvec2 (face->glyph->bitmap_left / (double) height, face->glyph->bitmap_top / (double) height),
+            (face->glyph->advance.x / (double) height) / 64.0f
         };
         characters->insert (pair<char, Character>(c, character));
     }
@@ -330,8 +332,8 @@ void renderText (TextObject* textObject)
     for (vector <Character>::iterator it = textObject->text->begin ();
     it != textObject->text->end (); ++it) {
 
-        glBindTexture (GL_TEXTURE_2D, (*it).texture);
-        glBindVertexArray ((*it).vao);
+        glBindTexture (GL_TEXTURE_2D, it->texture);
+        glBindVertexArray (it->vao);
         glDrawElements (GL_TRIANGLES, 3*2, GL_UNSIGNED_INT, (void*)0);  
     }
 }
@@ -400,7 +402,7 @@ void setNodeStatus (Node* node)
         str.push_back((char) (node->value / 10 + '0'));
         str.push_back((char) (node->value % 10 + '0'));
         
-        node_values->push_back (loadText (&str, node->x - 0.023f, node->y - 0.024f, 1.5f));
+        node_values->push_back (loadText (&str, node->x - 0.03f, node->y - 0.02f, 1.2f));
     }
 }
 
@@ -1009,13 +1011,10 @@ int main ()
     loadTexture (&texture_activeMenu, "res/textures/menu_active.png");
 
     loadBackground (&background_vao, &menu_vao);
-    
-    genTestNodes ();
 
     initText ();
 
-    string lol ("23");
-    TextObject* testText = loadText (&lol, -0.023f, -0.024f, 1.5f);
+    genTestNodes ();
 
     std::string vertexShader, fragmentShader;
     ParseShader ("res/shaders/vertex.shader", "res/shaders/fragment.shader", &vertexShader, &fragmentShader);
