@@ -101,6 +101,8 @@ vector <GLuint>* nodeGlare_vaos;
 vector <TextObject*>* node_values;
 vector <TextObject*>* standings;
 
+vector <Node*>* usedTreeNodes;
+
 
 double dist (Node* node_1, Node* node_2)
 {
@@ -125,6 +127,22 @@ bool nodeDetect (Node* node)
     return (sqrt ((node->x - mouse_xpos) * (node->x - mouse_xpos)
     + (node->y - mouse_ypos) * (node->y - mouse_ypos)) < 0.05f)
     && clicked;
+}
+
+
+void restoreBioDFS (Node* node)
+{
+    if (!(node->status & BIO)) {
+        return;
+    }
+
+    node->status &= ~BIO;
+
+    for (vector <Node*>::iterator it = node->childNeighbors.begin ();
+        it != node->childNeighbors.end (); ++it) {
+
+        restoreBioDFS (*it);
+    }
 }
 
 
@@ -385,22 +403,6 @@ void renderText (TextObject* textObject)
 }
 
 
-void restoreBioDFS (Node* node)
-{
-    if (!(node->status & BIO)) {
-        return;
-    }
-
-    node->status &= ~BIO;
-
-    for (vector <Node*>::iterator it = node->childNeighbors.begin ();
-        it != node->childNeighbors.end (); ++it) {
-
-        restoreBioDFS (*it);
-    }
-}
-
-
 void updateStandings ()
 {
     int pot = 10000;
@@ -516,6 +518,113 @@ void loadTreeVaosDFS (Node* node)
 }
 
 
+void getNodesDFS (Node* node)
+{
+    if (node->status & BIO) {
+        return;
+    }
+
+    node->status |= BIO;
+
+    if (!(node->status & UNUSED)) {
+        usedTreeNodes->push_back (node);
+    }
+
+    for (vector <Node*>::iterator it = node->childNodes.begin ();
+    it != node->childNodes.end (); ++it) {
+
+        getNodesDFS (*it);
+    }
+}
+
+
+int getMaxWin (vector <Node*>::iterator it, vector <Node*>::iterator skip, int userTurnsLeft, int pcTurnsLeft, int userSum, int pcSum)
+{
+    int retMaxWin = 0;
+
+    if (userTurnsLeft == 0 && pcTurnsLeft == 0) {
+        if (pcSum > userSum) {
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+
+    if (it != usedTreeNodes->end ()) {
+        if (++it != usedTreeNodes->end () && it != skip) {
+            if (userTurnsLeft > 0) {
+                retMaxWin += getMaxWin (it, skip, userTurnsLeft - 1, pcTurnsLeft, userSum + (*it)->value, pcSum);
+            }
+
+            if (pcTurnsLeft > 0) {
+                retMaxWin += getMaxWin (it, skip, userTurnsLeft, pcTurnsLeft - 1, userSum, pcSum + (*it)->value);
+            }
+        }
+    }
+
+    return retMaxWin;
+}
+
+
+void computerTurn ()
+{
+    usedTreeNodes->clear ();
+
+    getNodesDFS (root);
+    restoreBioDFS (root);
+
+    int maxWin = 0, temp = 0, userTurns, pcTurns, maxValue = 0;
+    Node* node = NULL;
+
+    userTurns = (int) usedTreeNodes->size () / 2;
+    pcTurns = userTurns;
+
+    if (userTurns + pcTurns < (int) usedTreeNodes->size ()) {
+        pcTurns++;
+    }
+
+    for (vector <Node*>::iterator it = usedTreeNodes->begin ();
+    it != usedTreeNodes->end (); ++it) {
+
+        if (!((*it)->status & ACTIVE)) {
+            continue;
+        }
+
+        if (maxValue < (*it)->value) {
+            maxValue = (*it)->value;
+            node = *it;
+        }
+    }    
+
+    for (vector <Node*>::iterator it = usedTreeNodes->begin ();
+    it != usedTreeNodes->end (); ++it) {
+
+        if (!((*it)->status & ACTIVE)) {
+            continue;
+        }
+
+        //temp = getMaxWin (usedTreeNodes->begin (), it, userTurns, pcTurns, sum_user, sum_pc + (*it)->value);
+
+        printf ("%d\n", temp);
+
+        if (maxWin < temp) {
+            maxWin = temp;
+            node = *it;
+        }
+    }
+
+    printf ("done.\n");
+
+    if (node != NULL) {
+        node->status |= UNUSED;
+        sum_pc += node->value;
+    }
+    
+    loadTreeVaosDFS (root);
+    restoreBioDFS (root);
+}
+
+
 static void key_callback (GLFWwindow* window, int key, int scancode, int action, int mods)
 {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
@@ -547,6 +656,16 @@ static void mouse_button_callback(GLFWwindow* window, int button, int action, in
         updateStandings ();
 
         clicked = false;
+
+        computerTurn ();
+
+        activeNode_vaos->clear ();
+        inactiveNode_vaos->clear ();
+        node_values->clear ();
+        
+        loadTreeVaosDFS (root);
+        restoreBioDFS (root);
+        updateStandings ();
     }
 }
 
@@ -1095,6 +1214,8 @@ int main ()
     edge_vaos = new vector <GLuint>;
     node_values = new vector <TextObject*>;
     standings = new vector <TextObject*>;
+
+    usedTreeNodes = new vector <Node*>;
 
     GLFWwindow *window = createWindow ();
     GLuint background_vao,
