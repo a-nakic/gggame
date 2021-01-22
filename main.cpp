@@ -34,22 +34,6 @@
 using namespace std;
 
 
-struct Node {
-    GLuint vao;
-    
-    uint8_t status;
-    int deg;
-    int value;
-    double x, y;
-
-    vector <Node*> parentNeighbors;
-    vector <Node*> childNeighbors;
-    Node* parentNode;
-    vector <Node*> childNodes;
-
-    vector <Node*> similarNodes;
-};
-
 struct Quad {
     pair <GLfloat, GLfloat> t1;
     pair <GLfloat, GLfloat> t2;
@@ -73,11 +57,33 @@ struct TextObject {
     GLuint textBackTexture;
 };
 
+struct Node {
+    GLuint vao;
+    
+    uint8_t status;
+    int deg;
+    int value;
+    double x, y;
+
+    vector <Node*> parentNeighbors;
+    vector <Node*> childNeighbors;
+    Node* parentNode;
+    vector <Node*> childNodes;
+
+    TextObject* textObject;
+    vector <Node*> similarNodes;
+};
+
+
 float asp = 1080.0f / 1920.0f;
 float inv_asp = 1920.0f / 1080.0f;
-int width;
-int height;
+int width = 1920;
+int height = 1080;
+int window_width;
+int window_height;
 double mouse_xpos, mouse_ypos;
+double mouse_pos_multiplier_x;
+double mouse_pos_multiplier_y;
 bool clicked;
 
 int sum_user = 0, sum_pc = 0;
@@ -93,6 +99,7 @@ vector <GLuint>* edge_vaos;
 vector <GLuint>* nodeGlare_vaos;
 
 vector <TextObject*>* node_values;
+vector <TextObject*>* standings;
 
 
 double dist (Node* node_1, Node* node_2)
@@ -149,10 +156,10 @@ void fillQuadBuffers (GLuint* vao, Quad* quad, bool useTexture)
     };
 
     GLfloat color_buffer_data_0[] = {
-        0.7f, 0.7f, 0.7f,//0
-        0.7f, 0.7f, 0.7f,//1
-        0.7f, 0.7f, 0.7f,//2
-        0.7f, 0.7f, 0.7f //3     
+        0.7f, 0.7f, 0.7f,
+        0.7f, 0.7f, 0.7f,
+        0.7f, 0.7f, 0.7f,
+        0.7f, 0.7f, 0.7f
     };
 
     GLuint indices_0[] = {
@@ -205,7 +212,46 @@ void fillQuadBuffers (GLuint* vao, Quad* quad, bool useTexture)
 }
 
 
-TextObject* loadText (string* text, float x, float y, float scale)
+void deleteQuadBuffers (GLuint* vao)
+{
+    GLint nAttr = 0;
+    glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &nAttr);
+    glBindVertexArray(*vao);
+
+    for (int iAttr = 0; iAttr < nAttr; ++iAttr) {
+        GLint vboId = 0;
+        GLuint vbo;
+        glGetVertexAttribiv(iAttr, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &vboId);
+        
+        if (vboId > 0) {
+            vbo = vboId;
+            glDeleteBuffers (1, &vbo);    
+        }
+    }
+
+    glDeleteVertexArrays (1, vao);
+}
+
+
+void deleteTextObject (TextObject* textObject)
+{
+    if (textObject != nullptr) {
+        if (textObject->text != nullptr) {
+            for (vector <Character>::iterator it = textObject->text->begin ();
+            it != textObject->text->end (); ++it) {
+
+                deleteQuadBuffers (&((*it).vao));
+            }
+
+            delete textObject->text;
+        }
+    
+        delete textObject;
+    }
+}
+
+
+TextObject* loadTextObject (string* text, float x, float y, float scale)
 {
     TextObject* ret = new TextObject;
     vector <Character>* vec = new vector <Character>;
@@ -355,12 +401,45 @@ void restoreBioDFS (Node* node)
 }
 
 
+void updateStandings ()
+{
+    int pot = 10000;
+    string s1 ("user"), s2 ("pc");
+    string s3, s4;
+    
+    for (int i = 0; i < 4; i++) {
+        char c1 = (char) (sum_user % pot / (pot / 10) + '0');
+        char c2 = (char) (sum_pc % pot / (pot / 10) + '0');
+        pot /= 10;
+
+        s3.push_back (c1);
+        s4.push_back (c2);
+    }
+
+    for (vector <TextObject*>::iterator it = standings->begin ();
+    it != standings->end (); ++it) {
+
+        deleteTextObject (*it);
+    }
+    standings->clear ();
+
+    standings->push_back (loadTextObject (&s1, -inv_asp, 0.1f, 1.0f));
+    standings->push_back (loadTextObject (&s3, -inv_asp, 0.05f, 1.0f));
+    standings->push_back (loadTextObject (&s2, -inv_asp, -0.05f, 1.0f));
+    standings->push_back (loadTextObject (&s4, -inv_asp, -0.1f, 1.0f));
+}
+
+
 void setNodeStatus (Node* node)
 {
     int usedNeighborsNum = 0;
 
-    if (nodeDetect (node) && node->status & ACTIVE) {
-        node->status |= UNUSED;
+    if (nodeDetect (node)) {
+        if (node->status & ACTIVE) {
+            node->status |= UNUSED;
+        }
+
+        sum_user += node->value;
     }
 
     for (vector <Node*>::iterator it = node->childNodes.begin ();
@@ -401,8 +480,14 @@ void setNodeStatus (Node* node)
         string str; 
         str.push_back((char) (node->value / 10 + '0'));
         str.push_back((char) (node->value % 10 + '0'));
+
+        TextObject* newTextObject = loadTextObject (&str, node->x - 0.03f, node->y - 0.02f, 1.2f);
         
-        node_values->push_back (loadText (&str, node->x - 0.03f, node->y - 0.02f, 1.2f));
+        node_values->push_back (newTextObject);
+        if (node->textObject != NULL) {
+            deleteTextObject (node->textObject);
+        }
+        node->textObject = newTextObject;
     }
 }
 
@@ -441,10 +526,10 @@ static void key_callback (GLFWwindow* window, int key, int scancode, int action,
 
 static void cursor_position_callback (GLFWwindow* window, double xpos, double ypos)
 {
-    mouse_xpos = (xpos - width / 2) / (width / 2) * inv_asp;
-    mouse_ypos = (height / 2 - ypos) / (height / 2);
+    mouse_xpos = (xpos - window_width / 2) / (window_width / 2) * mouse_pos_multiplier_x;
+    mouse_ypos = (window_height / 2 - ypos) / (window_height / 2) * mouse_pos_multiplier_y;
 
-    //printf ("%lf, %lf\n", mouse_xpos, mouse_ypos);
+    //printf ("%lf, %lf, %lf\n", mouse_xpos, mouse_ypos, inv_asp);
 }
 
 
@@ -459,6 +544,7 @@ static void mouse_button_callback(GLFWwindow* window, int button, int action, in
         
         loadTreeVaosDFS (root);
         restoreBioDFS (root);
+        updateStandings ();
 
         clicked = false;
     }
@@ -467,10 +553,31 @@ static void mouse_button_callback(GLFWwindow* window, int button, int action, in
 
 void framebuffer_size_callback(GLFWwindow* window, int local_width, int local_height)
 {
-    width = local_width;
-    height = local_height;
+    int newHeight, newWidth;
+    int newx, newy;
 
-    glViewport(0, 0, width, height);
+    cout << inv_asp << endl;
+
+    if (local_height * inv_asp < local_width) {
+        newHeight = local_height;
+        newWidth = local_height * inv_asp;
+        newx = (local_width - newWidth) / 2;
+        newy = 0;
+        mouse_pos_multiplier_x = local_width / (double) newWidth * inv_asp;
+        mouse_pos_multiplier_y = 1.0f;
+    } else {
+        newWidth = local_width;
+        newHeight = local_width * asp;
+        newx = 0;
+        newy = (local_height - newHeight) / 2;
+        mouse_pos_multiplier_x = inv_asp;
+        mouse_pos_multiplier_y = local_height / (double) newHeight;
+    }
+
+    window_height = local_height;
+    window_width = local_width;
+
+    glViewport(newx, newy, newWidth, newHeight);
 }
 
 
@@ -562,11 +669,7 @@ GLFWwindow *createWindow ()
     
     GLFWwindow *window = glfwCreateWindow (mode -> width, mode -> height, "My Title", NULL, NULL);
 
-    glfwGetWindowSize (window, &width, &height);
-    printf ("%d %d\n", width, height);
-
-    asp = (double) height / (double) width;
-    inv_asp = (double) width / (double) height;
+    glfwGetWindowSize (window, &window_width, &window_height);
 
     glfwDestroyWindow (window);
     window = glfwCreateWindow (width, height, "My Title", NULL, NULL);
@@ -727,6 +830,7 @@ void preCompGraph ()
     root->y = 0.0;
     root->status = 0x00;
     root->parentNode = NULL;
+    root->textObject = NULL;
 
     vector <Node*> nodes;
     vector <Node*> temp;
@@ -759,6 +863,7 @@ void preCompGraph ()
             newNode->y = y;
             newNode->status = 0x00;
             newNode->parentNode = NULL;
+            newNode->textObject = NULL;
 
             temp.push_back (newNode);
 
@@ -989,6 +1094,7 @@ int main ()
     nodeCenter_vaos = new vector <GLuint>;
     edge_vaos = new vector <GLuint>;
     node_values = new vector <TextObject*>;
+    standings = new vector <TextObject*>;
 
     GLFWwindow *window = createWindow ();
     GLuint background_vao,
@@ -1010,11 +1116,13 @@ int main ()
     loadTexture (&texture_inactiveMenu, "res/textures/menu_inactive.png");
     loadTexture (&texture_activeMenu, "res/textures/menu_active.png");
 
-    loadBackground (&background_vao, &menu_vao);
-
     initText ();
 
+    loadBackground (&background_vao, &menu_vao);
+
     genTestNodes ();
+
+    updateStandings ();
 
     std::string vertexShader, fragmentShader;
     ParseShader ("res/shaders/vertex.shader", "res/shaders/fragment.shader", &vertexShader, &fragmentShader);
@@ -1069,7 +1177,12 @@ int main ()
         it != node_values->end (); ++it) {
             
             renderText (*it);
-            printf ("done.\n");
+        }
+
+        for (vector <TextObject*>::iterator it = standings->begin ();
+        it != standings->end (); ++it) {
+            
+            renderText (*it);
         }
 
         glfwSwapBuffers (window);
