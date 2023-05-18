@@ -1,7 +1,7 @@
 #include "graphicAlgorithms.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
-#include "Dependencies/std_image.h"
+#include "dependencies/std_image.h"
 
 
 void ParseShader (const char *vertexShaderFilePath, const char *fragmentShaderFilePath, std::string *vertexShaderSource, std::string *fragmentShaderSource)

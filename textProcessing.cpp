@@ -49,7 +49,7 @@ void initText (SharedData* sharedData)
 
         Character character = {
             texture,
-            NULL,
+			NULL,
             glm::fvec2 (face->glyph->bitmap.width / (double) sharedData->height, face->glyph->bitmap.rows / (double) sharedData->height),
             glm::fvec2 (face->glyph->bitmap_left / (double) sharedData->height, face->glyph->bitmap_top / (double) sharedData->height),
             (face->glyph->advance.x / (double) sharedData->height) / 64.0f

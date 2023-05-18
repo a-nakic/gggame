@@ -1,34 +1,42 @@
-default: main
-
 CXX = g++
 
-OBJ = graphGeneration.o textProcessing.o treeAlgorithms.o userInput.o glfwCallbacks.o graphicAlgorithms.o turnComputeAlgorithms.o statusAlgorithms.o main.o
+OBJ = graphGeneration.o\
+	  textProcessing.o\
+	  treeAlgorithms.o\
+	  userInput.o\
+	  glfwCallbacks.o\
+	  graphicAlgorithms.o\
+	  turnComputeAlgorithms.o\
+	  statusAlgorithms.o main.o
 
-FLAGS = -lGLEW -lGL -lglfw -lfreetype -I /usr/include/freetype2 -I include
+FLAGS_LINUX = -lGLEW -lGL -lglfw -lfreetype -I /usr/include/freetype2 -I include
+
+FLAGS_WWINDOWSS = -lGLEW -lGL -lglfw -lfreetype -I /usr/include/freetype2 -I include
 
 clean:
-	rm *.o main
+	rm *.o
 
-main: $(OBJ)
-	$(CXX) -o main $(OBJ) $(FLAGS)
+linux: $(OBJ)
+	$(CXX) -o build/linux/gggame $(OBJ) $(FLAGS_LINUX)
+
+windows: $(OBJ)
+	$(CXX) -o build/windows/gggame $(OBJ) $(FLAGS_WINDOWS)
 
 graphGeneration.o: graphGeneration.cpp
-	$(CXX) -c -o $@ $< $(FLAGS)
+	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
 textProcessing.o: textProcessing.cpp
-	$(CXX) -c -o $@ $< -I textProcessing.hpp $(FLAGS)
+	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
 treeAlgorithms.o: treeAlgorithms.cpp
-	$(CXX) -c -o $@ $< -I treeAlgorithms.hpp $(FLAGS)
+	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
 userInput.o: userInput.cpp
-	$(CXX) -c -o $@ $< -I userInput.hpp $(FLAGS)
+	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
 glfwCallbacks.o: glfwCallbacks.cpp
-	$(CXX) -c -o $@ $< -I glfwCallbacks.hpp $(FLAGS)
+	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
 graphicAlgorithms.o: graphicAlgorithms.cpp
-	$(CXX) -c -o $@ $< -I graphicAlgorithms.hpp $(FLAGS)
+	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
 turnComputeAlgorithms.o: turnComputeAlgorithms.cpp
-	$(CXX) -c -o $@ $< -I turnComputeAlgorithms.hpp $(FLAGS)
+	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
 statusAlgorithms.o: statusAlgorithms.cpp
-	$(CXX) -c -o $@ $< -I statusAlgorithms.hpp $(FLAGS)
-
-
+	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
 main.o: main.cpp
-	$(CXX) -c -o $@ $< $(FLAGS)
+	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
