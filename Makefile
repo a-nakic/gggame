@@ -1,4 +1,10 @@
+default: linux
+
 CXX = g++
+
+BUILD_LINUX = build/linux
+
+BUILD_WINDOWS = build/windows
 
 OBJ = graphGeneration.o\
 	  textProcessing.o\
@@ -9,34 +15,27 @@ OBJ = graphGeneration.o\
 	  turnComputeAlgorithms.o\
 	  statusAlgorithms.o main.o
 
-FLAGS_LINUX = -lGLEW -lGL -lglfw -lfreetype -I /usr/include/freetype2 -I include
 
-FLAGS_WWINDOWSS = -lGLEW -lGL -lglfw -lfreetype -I /usr/include/freetype2 -I include
+FLAGS_LINUX = -lGLEW -lGL -lglfw -lfreetype -I /usr/include/freetype2
+
+FLAGS_WINDOWS = -lGLEW -lGL -lglfw -lfreetype -I /usr/include/freetype2
+
+OBJ_LINUX := $(foreach obj,$(OBJ),$(BUILD_LINUX)/$(obj))
+
+OBJ_WINDOWS := $(foreach obj,$(OBJ),$(BUILD_WINDOWS)/$(obj))
 
 clean:
-	rm *.o
+	rm build/linux/*.o build/windows/*.o
 
-linux: $(OBJ)
-	$(CXX) -o build/linux/gggame $(OBJ) $(FLAGS_LINUX)
+linux: $(OBJ_LINUX)
+	$(CXX) -o build/linux/gggame $(OBJ_LINUX) $(FLAGS_LINUX)
 
-windows: $(OBJ)
-	$(CXX) -o build/windows/gggame $(OBJ) $(FLAGS_WINDOWS)
+windows: $(OBJ_WINDOWS)
+	$(CXX) -o build/windows/gggame $(OBJ_WINDOWS) $(FLAGS_WINDOWS)
 
-graphGeneration.o: graphGeneration.cpp
+
+$(BUILD_LINUX)/%.o: %.cpp
 	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
-textProcessing.o: textProcessing.cpp
-	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
-treeAlgorithms.o: treeAlgorithms.cpp
-	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
-userInput.o: userInput.cpp
-	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
-glfwCallbacks.o: glfwCallbacks.cpp
-	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
-graphicAlgorithms.o: graphicAlgorithms.cpp
-	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
-turnComputeAlgorithms.o: turnComputeAlgorithms.cpp
-	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
-statusAlgorithms.o: statusAlgorithms.cpp
-	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
-main.o: main.cpp
-	$(CXX) -c -o $@ $< $(FLAGS_LINUX)
+
+$(BUILD_WINDOWS)/%.o: %.cpp
+	$(CXX) -c -o $@ $< $(FLAGS_WINDOWS)
