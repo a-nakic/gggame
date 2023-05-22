@@ -18,7 +18,7 @@ OBJ = graphGeneration.o\
 
 FLAGS_LINUX = -lGLEW -lGL -lglfw -lfreetype -I /usr/include/freetype2
 
-FLAGS_WINDOWS = -lGLEW -lGL -lglfw -lfreetype -I /usr/include/freetype2
+FLAGS_WINDOWS = -I include -I "C:\Program Files (x86)\GnuWin32\include\freetype2" -I "C:\Program Files (x86)\GnuWin32\include" -L lib -L "C:\Program Files (x86)\GnuWin32\lib" -lglew32 -lglfw3 -lglut32 -lopengl32 -lfreetype
 
 OBJ_LINUX := $(foreach obj,$(OBJ),$(BUILD_LINUX)/$(obj))
 
